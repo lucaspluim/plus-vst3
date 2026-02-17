@@ -325,74 +325,80 @@ void AudioVisualizerProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     bottomRightKick.store(kickTransient.load());
     bottomRightFull.store(fullSpectrum.load());
 
-    // Analyze sidechain buses independently
-    if (getTotalNumInputChannels() > 2 && !usingLoadedAudio)
+    // Analyze sidechain buses independently (check each bus individually)
+    if (!usingLoadedAudio)
     {
         // Analyze Top Panel sidechain (bus 1)
-        if (getBusCount(true) > 1)
+        auto topBus = getBusBuffer(buffer, true, 1);
+        if (topBus.getNumChannels() > 0 && topBus.getNumSamples() > 0)
         {
-            auto topBus = getBusBuffer(buffer, true, 1);
-            if (topBus.getNumChannels() > 0 && topBus.getNumSamples() > 0)
+            float magnitude = topBus.getMagnitude(0, topBus.getNumSamples());
+            if (magnitude > 0.0001f)
             {
-                float rms = topBus.getRMSLevel(0, 0, topBus.getNumSamples());
-                if (rms > 0.001f)
-                {
-                    topHasSidechain.store(true);
-                    analyzeSidechainBus(topBus, topFftData, topFftDataPos,
-                                       topSubBass, topBass, topLowMid, topMid,
-                                       topHighMid, topHigh, topVeryHigh, topKick, topFull);
+                topHasSidechain.store(true);
+            }
 
-                    // Mix sidechain audio into main output so it's audible
-                    for (int ch = 0; ch < juce::jmin(topBus.getNumChannels(), buffer.getNumChannels()); ++ch)
-                    {
-                        buffer.addFrom(ch, 0, topBus, ch, 0, topBus.getNumSamples());
-                    }
+            // Always analyze if bus exists, even if silent
+            analyzeSidechainBus(topBus, topFftData, topFftDataPos,
+                               topSubBass, topBass, topLowMid, topMid,
+                               topHighMid, topHigh, topVeryHigh, topKick, topFull);
+
+            // Mix sidechain audio into main output so it's audible (only if has audio)
+            if (magnitude > 0.0001f)
+            {
+                for (int ch = 0; ch < juce::jmin(topBus.getNumChannels(), 2); ++ch)
+                {
+                    buffer.addFrom(ch, 0, topBus, ch, 0, topBus.getNumSamples());
                 }
             }
         }
 
         // Analyze Bottom Left sidechain (bus 2)
-        if (getBusCount(true) > 2)
+        auto bottomLeftBus = getBusBuffer(buffer, true, 2);
+        if (bottomLeftBus.getNumChannels() > 0 && bottomLeftBus.getNumSamples() > 0)
         {
-            auto bottomLeftBus = getBusBuffer(buffer, true, 2);
-            if (bottomLeftBus.getNumChannels() > 0 && bottomLeftBus.getNumSamples() > 0)
+            float magnitude = bottomLeftBus.getMagnitude(0, bottomLeftBus.getNumSamples());
+            if (magnitude > 0.0001f)  // Lower threshold
             {
-                float rms = bottomLeftBus.getRMSLevel(0, 0, bottomLeftBus.getNumSamples());
-                if (rms > 0.001f)
-                {
-                    bottomLeftHasSidechain.store(true);
-                    analyzeSidechainBus(bottomLeftBus, bottomLeftFftData, bottomLeftFftDataPos,
-                                       bottomLeftSubBass, bottomLeftBass, bottomLeftLowMid, bottomLeftMid,
-                                       bottomLeftHighMid, bottomLeftHigh, bottomLeftVeryHigh, bottomLeftKick, bottomLeftFull);
+                bottomLeftHasSidechain.store(true);
+            }
 
-                    // Mix sidechain audio into main output so it's audible
-                    for (int ch = 0; ch < juce::jmin(bottomLeftBus.getNumChannels(), buffer.getNumChannels()); ++ch)
-                    {
-                        buffer.addFrom(ch, 0, bottomLeftBus, ch, 0, bottomLeftBus.getNumSamples());
-                    }
+            // Always analyze if bus exists, even if silent
+            analyzeSidechainBus(bottomLeftBus, bottomLeftFftData, bottomLeftFftDataPos,
+                               bottomLeftSubBass, bottomLeftBass, bottomLeftLowMid, bottomLeftMid,
+                               bottomLeftHighMid, bottomLeftHigh, bottomLeftVeryHigh, bottomLeftKick, bottomLeftFull);
+
+            // Mix sidechain audio into main output so it's audible (only if has audio)
+            if (magnitude > 0.0001f)
+            {
+                for (int ch = 0; ch < juce::jmin(bottomLeftBus.getNumChannels(), 2); ++ch)
+                {
+                    buffer.addFrom(ch, 0, bottomLeftBus, ch, 0, bottomLeftBus.getNumSamples());
                 }
             }
         }
 
         // Analyze Bottom Right sidechain (bus 3)
-        if (getBusCount(true) > 3)
+        auto bottomRightBus = getBusBuffer(buffer, true, 3);
+        if (bottomRightBus.getNumChannels() > 0 && bottomRightBus.getNumSamples() > 0)
         {
-            auto bottomRightBus = getBusBuffer(buffer, true, 3);
-            if (bottomRightBus.getNumChannels() > 0 && bottomRightBus.getNumSamples() > 0)
+            float magnitude = bottomRightBus.getMagnitude(0, bottomRightBus.getNumSamples());
+            if (magnitude > 0.0001f)
             {
-                float rms = bottomRightBus.getRMSLevel(0, 0, bottomRightBus.getNumSamples());
-                if (rms > 0.001f)
-                {
-                    bottomRightHasSidechain.store(true);
-                    analyzeSidechainBus(bottomRightBus, bottomRightFftData, bottomRightFftDataPos,
-                                       bottomRightSubBass, bottomRightBass, bottomRightLowMid, bottomRightMid,
-                                       bottomRightHighMid, bottomRightHigh, bottomRightVeryHigh, bottomRightKick, bottomRightFull);
+                bottomRightHasSidechain.store(true);
+            }
 
-                    // Mix sidechain audio into main output so it's audible
-                    for (int ch = 0; ch < juce::jmin(bottomRightBus.getNumChannels(), buffer.getNumChannels()); ++ch)
-                    {
-                        buffer.addFrom(ch, 0, bottomRightBus, ch, 0, bottomRightBus.getNumSamples());
-                    }
+            // Always analyze if bus exists, even if silent
+            analyzeSidechainBus(bottomRightBus, bottomRightFftData, bottomRightFftDataPos,
+                               bottomRightSubBass, bottomRightBass, bottomRightLowMid, bottomRightMid,
+                               bottomRightHighMid, bottomRightHigh, bottomRightVeryHigh, bottomRightKick, bottomRightFull);
+
+            // Mix sidechain audio into main output so it's audible (only if has audio)
+            if (magnitude > 0.0001f)
+            {
+                for (int ch = 0; ch < juce::jmin(bottomRightBus.getNumChannels(), 2); ++ch)
+                {
+                    buffer.addFrom(ch, 0, bottomRightBus, ch, 0, bottomRightBus.getNumSamples());
                 }
             }
         }
