@@ -315,6 +315,21 @@ void AudioVisualizerEditor::showFrequencyMenu(SectionID section)
     menu.addSeparator();
     menu.addItem(10, "Show Values", true, showDebugValues);
 
+    // Show input source info
+    menu.addSeparator();
+    AudioVisualizerProcessor::PanelID panelID;
+    switch (section)
+    {
+        case SectionID::Top: panelID = AudioVisualizerProcessor::Top; break;
+        case SectionID::BottomLeft: panelID = AudioVisualizerProcessor::BottomLeft; break;
+        case SectionID::BottomRight: panelID = AudioVisualizerProcessor::BottomRight; break;
+        default: panelID = AudioVisualizerProcessor::Main; break;
+    }
+
+    bool hasSidechain = audioProcessor.hasSidechainInput(panelID);
+    juce::String inputSource = hasSidechain ? "Input: Sidechain" : "Input: Main Track";
+    menu.addItem(11, inputSource, false, false);  // Non-clickable info item
+
     menu.showMenuAsync(juce::PopupMenu::Options(), [this, section](int result)
     {
         if (result > 0)
@@ -388,28 +403,28 @@ void AudioVisualizerEditor::applyEffectToSection(SectionID section, EffectType e
     repaint();
 }
 
-float AudioVisualizerEditor::getFrequencyValue(FrequencyRange range)
+float AudioVisualizerEditor::getFrequencyValue(FrequencyRange range, AudioVisualizerProcessor::PanelID panel)
 {
     switch (range)
     {
         case FrequencyRange::SubBass:
-            return audioProcessor.getSubBassEnergy();
+            return audioProcessor.getSubBassEnergy(panel);
         case FrequencyRange::Bass:
-            return audioProcessor.getBassEnergy();
+            return audioProcessor.getBassEnergy(panel);
         case FrequencyRange::LowMids:
-            return audioProcessor.getLowMidEnergy();
+            return audioProcessor.getLowMidEnergy(panel);
         case FrequencyRange::Mids:
-            return audioProcessor.getMidEnergy();
+            return audioProcessor.getMidEnergy(panel);
         case FrequencyRange::HighMids:
-            return audioProcessor.getHighMidEnergy();
+            return audioProcessor.getHighMidEnergy(panel);
         case FrequencyRange::Highs:
-            return audioProcessor.getHighEnergy();
+            return audioProcessor.getHighEnergy(panel);
         case FrequencyRange::VeryHighs:
-            return audioProcessor.getVeryHighEnergy();
+            return audioProcessor.getVeryHighEnergy(panel);
         case FrequencyRange::KickTransient:
-            return audioProcessor.getKickTransient();
+            return audioProcessor.getKickTransient(panel);
         case FrequencyRange::FullSpectrum:
-            return audioProcessor.getFullSpectrum();
+            return audioProcessor.getFullSpectrum(panel);
         default:
             return 0.0f;
     }
@@ -444,9 +459,9 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
     bottomRightSectionBounds.setWidth(bottomHalf.getWidth() / 2);
 
     // Get frequency values for each section based on their configured ranges
-    float topRawValue = getFrequencyValue(topEffect.frequencyRange);
-    float bottomLeftRawValue = getFrequencyValue(bottomLeftEffect.frequencyRange);
-    float bottomRightRawValue = getFrequencyValue(bottomRightEffect.frequencyRange);
+    float topRawValue = getFrequencyValue(topEffect.frequencyRange, AudioVisualizerProcessor::Top);
+    float bottomLeftRawValue = getFrequencyValue(bottomLeftEffect.frequencyRange, AudioVisualizerProcessor::BottomLeft);
+    float bottomRightRawValue = getFrequencyValue(bottomRightEffect.frequencyRange, AudioVisualizerProcessor::BottomRight);
 
     // Check if playing
     bool isPlaying = audioProcessor.isPlaying();

@@ -44,7 +44,10 @@ public:
         return (wrapperType != wrapperType_Standalone) || playing;
     }
 
-    // Analysis results - frequency bands
+    // Panel IDs for sidechain routing
+    enum PanelID { Main = 0, Top = 1, BottomLeft = 2, BottomRight = 3 };
+
+    // Analysis results - frequency bands (main/default)
     float getSubBassEnergy() const { return subBassEnergy.load(); }
     float getBassEnergy() const { return bassEnergy.load(); }
     float getLowMidEnergy() const { return lowMidEnergy.load(); }
@@ -54,6 +57,25 @@ public:
     float getVeryHighEnergy() const { return veryHighEnergy.load(); }
     float getKickTransient() const { return kickTransient.load(); }
     float getFullSpectrum() const { return fullSpectrum.load(); }
+
+    // Sidechain analysis getters (per panel)
+    float getSubBassEnergy(PanelID panel) const;
+    float getBassEnergy(PanelID panel) const;
+    float getLowMidEnergy(PanelID panel) const;
+    float getMidEnergy(PanelID panel) const;
+    float getHighMidEnergy(PanelID panel) const;
+    float getHighEnergy(PanelID panel) const;
+    float getVeryHighEnergy(PanelID panel) const;
+    float getKickTransient(PanelID panel) const;
+    float getFullSpectrum(PanelID panel) const;
+
+    // Check if panel has active sidechain routing
+    bool hasSidechainInput(PanelID panel) const {
+        if (panel == Top) return topHasSidechain.load();
+        if (panel == BottomLeft) return bottomLeftHasSidechain.load();
+        if (panel == BottomRight) return bottomRightHasSidechain.load();
+        return false;
+    }
 
     // Get FFT spectrum data for frequency range
     void getSpectrumForRange(float minFreq, float maxFreq, std::vector<float>& output, int numPoints) const;
@@ -71,6 +93,16 @@ private:
     static constexpr int fftSize = 1 << fftOrder;
     juce::dsp::FFT fft { fftOrder };
     juce::dsp::WindowingFunction<float> window { fftSize, juce::dsp::WindowingFunction<float>::hann };
+
+    // Helper to analyze a bus and store results in specific panel variables
+    void analyzeSidechainBus(const juce::AudioBuffer<float>& bus,
+                            std::array<float, fftSize * 2>& fftDataArray,
+                            int& fftPos,
+                            std::atomic<float>& subBass, std::atomic<float>& bass,
+                            std::atomic<float>& lowMid, std::atomic<float>& mid,
+                            std::atomic<float>& highMid, std::atomic<float>& high,
+                            std::atomic<float>& veryHigh, std::atomic<float>& kick,
+                            std::atomic<float>& full);
 
     std::array<float, fftSize * 2> fftData;
     int fftDataPos = 0;
@@ -104,6 +136,35 @@ private:
     // Smoothing factors for adaptive gain
     static constexpr float averageSmoothingFactor = 0.95f;  // How fast to adapt (was 0.99)
     static constexpr float minAverageThreshold = 0.001f;    // Prevent division by zero
+
+    // Track which panels have active sidechain routing
+    std::atomic<bool> topHasSidechain { false };
+    std::atomic<bool> bottomLeftHasSidechain { false };
+    std::atomic<bool> bottomRightHasSidechain { false };
+
+    // Sidechain analysis per panel (when routing from different tracks)
+    // Top Panel (bus 1)
+    std::atomic<float> topSubBass { 0.0f }, topBass { 0.0f }, topLowMid { 0.0f };
+    std::atomic<float> topMid { 0.0f }, topHighMid { 0.0f }, topHigh { 0.0f };
+    std::atomic<float> topVeryHigh { 0.0f }, topKick { 0.0f }, topFull { 0.0f };
+
+    // Bottom Left Panel (bus 2)
+    std::atomic<float> bottomLeftSubBass { 0.0f }, bottomLeftBass { 0.0f }, bottomLeftLowMid { 0.0f };
+    std::atomic<float> bottomLeftMid { 0.0f }, bottomLeftHighMid { 0.0f }, bottomLeftHigh { 0.0f };
+    std::atomic<float> bottomLeftVeryHigh { 0.0f }, bottomLeftKick { 0.0f }, bottomLeftFull { 0.0f };
+
+    // Bottom Right Panel (bus 3)
+    std::atomic<float> bottomRightSubBass { 0.0f }, bottomRightBass { 0.0f }, bottomRightLowMid { 0.0f };
+    std::atomic<float> bottomRightMid { 0.0f }, bottomRightHighMid { 0.0f }, bottomRightHigh { 0.0f };
+    std::atomic<float> bottomRightVeryHigh { 0.0f }, bottomRightKick { 0.0f }, bottomRightFull { 0.0f };
+
+    // Sidechain FFT state (for analyzing sidechain buses independently)
+    std::array<float, fftSize * 2> topFftData;
+    int topFftDataPos = 0;
+    std::array<float, fftSize * 2> bottomLeftFftData;
+    int bottomLeftFftDataPos = 0;
+    std::array<float, fftSize * 2> bottomRightFftData;
+    int bottomRightFftDataPos = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioVisualizerProcessor)
 };

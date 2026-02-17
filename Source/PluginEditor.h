@@ -95,8 +95,8 @@ private:
     void renderEffect(juce::Graphics& g, const EffectConfig& config,
                      float value, const juce::Rectangle<int>& bounds);
 
-    // Helper to get the frequency value based on FrequencyRange
-    float getFrequencyValue(FrequencyRange range);
+    // Helper to get the frequency value based on FrequencyRange and panel
+    float getFrequencyValue(FrequencyRange range, AudioVisualizerProcessor::PanelID panel = AudioVisualizerProcessor::Main);
 
     // Effect picker UI
     bool effectPickerVisible = false;

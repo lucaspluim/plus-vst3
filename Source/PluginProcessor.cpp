@@ -4,10 +4,16 @@
 AudioVisualizerProcessor::AudioVisualizerProcessor()
     : AudioProcessor (BusesProperties()
                      .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
+                     .withInput  ("Top Panel", juce::AudioChannelSet::stereo(), false)
+                     .withInput  ("Bottom Left", juce::AudioChannelSet::stereo(), false)
+                     .withInput  ("Bottom Right", juce::AudioChannelSet::stereo(), false)
                      .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 {
     formatManager.registerBasicFormats();
     fftData.fill(0.0f);
+    topFftData.fill(0.0f);
+    bottomLeftFftData.fill(0.0f);
+    bottomRightFftData.fill(0.0f);
 }
 
 AudioVisualizerProcessor::~AudioVisualizerProcessor()
@@ -77,10 +83,17 @@ void AudioVisualizerProcessor::releaseResources()
 
 bool AudioVisualizerProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
+    // Main output must be mono or stereo
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
      && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
         return false;
 
+    // Main input must be mono or stereo
+    if (layouts.getMainInputChannelSet() != juce::AudioChannelSet::mono()
+     && layouts.getMainInputChannelSet() != juce::AudioChannelSet::stereo())
+        return false;
+
+    // Accept any configuration of sidechain buses
     return true;
 }
 
@@ -104,15 +117,16 @@ void AudioVisualizerProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     }
     // For VST3/AU: Don't clear buffer, audio passes through
 
-    // Always perform FFT analysis on whatever audio is in the buffer
-    if (buffer.getNumSamples() > 0)
+    // Always perform FFT analysis on main input bus only (not sidechains)
+    auto mainInputBus = getBusBuffer(buffer, true, 0);
+    if (mainInputBus.getNumSamples() > 0)
     {
-        // Perform FFT analysis
-        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        // Perform FFT analysis on main input only
+        for (int channel = 0; channel < mainInputBus.getNumChannels(); ++channel)
         {
-            const float* channelData = buffer.getReadPointer(channel);
+            const float* channelData = mainInputBus.getReadPointer(channel);
 
-            for (int i = 0; i < buffer.getNumSamples(); ++i)
+            for (int i = 0; i < mainInputBus.getNumSamples(); ++i)
             {
                 // Add to FFT buffer
                 fftData[fftDataPos] = channelData[i];
@@ -275,6 +289,115 @@ void AudioVisualizerProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
+    // Reset sidechain flags
+    topHasSidechain.store(false);
+    bottomLeftHasSidechain.store(false);
+    bottomRightHasSidechain.store(false);
+
+    // Set default values for all panels (use main analysis)
+    topSubBass.store(subBassEnergy.load());
+    topBass.store(bassEnergy.load());
+    topLowMid.store(lowMidEnergy.load());
+    topMid.store(midEnergy.load());
+    topHighMid.store(highMidEnergy.load());
+    topHigh.store(highEnergy.load());
+    topVeryHigh.store(veryHighEnergy.load());
+    topKick.store(kickTransient.load());
+    topFull.store(fullSpectrum.load());
+
+    bottomLeftSubBass.store(subBassEnergy.load());
+    bottomLeftBass.store(bassEnergy.load());
+    bottomLeftLowMid.store(lowMidEnergy.load());
+    bottomLeftMid.store(midEnergy.load());
+    bottomLeftHighMid.store(highMidEnergy.load());
+    bottomLeftHigh.store(highEnergy.load());
+    bottomLeftVeryHigh.store(veryHighEnergy.load());
+    bottomLeftKick.store(kickTransient.load());
+    bottomLeftFull.store(fullSpectrum.load());
+
+    bottomRightSubBass.store(subBassEnergy.load());
+    bottomRightBass.store(bassEnergy.load());
+    bottomRightLowMid.store(lowMidEnergy.load());
+    bottomRightMid.store(midEnergy.load());
+    bottomRightHighMid.store(highMidEnergy.load());
+    bottomRightHigh.store(highEnergy.load());
+    bottomRightVeryHigh.store(veryHighEnergy.load());
+    bottomRightKick.store(kickTransient.load());
+    bottomRightFull.store(fullSpectrum.load());
+
+    // Analyze sidechain buses independently
+    if (getTotalNumInputChannels() > 2 && !usingLoadedAudio)
+    {
+        // Analyze Top Panel sidechain (bus 1)
+        if (getBusCount(true) > 1)
+        {
+            auto topBus = getBusBuffer(buffer, true, 1);
+            if (topBus.getNumChannels() > 0 && topBus.getNumSamples() > 0)
+            {
+                float rms = topBus.getRMSLevel(0, 0, topBus.getNumSamples());
+                if (rms > 0.001f)
+                {
+                    topHasSidechain.store(true);
+                    analyzeSidechainBus(topBus, topFftData, topFftDataPos,
+                                       topSubBass, topBass, topLowMid, topMid,
+                                       topHighMid, topHigh, topVeryHigh, topKick, topFull);
+
+                    // Mix sidechain audio into main output so it's audible
+                    for (int ch = 0; ch < juce::jmin(topBus.getNumChannels(), buffer.getNumChannels()); ++ch)
+                    {
+                        buffer.addFrom(ch, 0, topBus, ch, 0, topBus.getNumSamples());
+                    }
+                }
+            }
+        }
+
+        // Analyze Bottom Left sidechain (bus 2)
+        if (getBusCount(true) > 2)
+        {
+            auto bottomLeftBus = getBusBuffer(buffer, true, 2);
+            if (bottomLeftBus.getNumChannels() > 0 && bottomLeftBus.getNumSamples() > 0)
+            {
+                float rms = bottomLeftBus.getRMSLevel(0, 0, bottomLeftBus.getNumSamples());
+                if (rms > 0.001f)
+                {
+                    bottomLeftHasSidechain.store(true);
+                    analyzeSidechainBus(bottomLeftBus, bottomLeftFftData, bottomLeftFftDataPos,
+                                       bottomLeftSubBass, bottomLeftBass, bottomLeftLowMid, bottomLeftMid,
+                                       bottomLeftHighMid, bottomLeftHigh, bottomLeftVeryHigh, bottomLeftKick, bottomLeftFull);
+
+                    // Mix sidechain audio into main output so it's audible
+                    for (int ch = 0; ch < juce::jmin(bottomLeftBus.getNumChannels(), buffer.getNumChannels()); ++ch)
+                    {
+                        buffer.addFrom(ch, 0, bottomLeftBus, ch, 0, bottomLeftBus.getNumSamples());
+                    }
+                }
+            }
+        }
+
+        // Analyze Bottom Right sidechain (bus 3)
+        if (getBusCount(true) > 3)
+        {
+            auto bottomRightBus = getBusBuffer(buffer, true, 3);
+            if (bottomRightBus.getNumChannels() > 0 && bottomRightBus.getNumSamples() > 0)
+            {
+                float rms = bottomRightBus.getRMSLevel(0, 0, bottomRightBus.getNumSamples());
+                if (rms > 0.001f)
+                {
+                    bottomRightHasSidechain.store(true);
+                    analyzeSidechainBus(bottomRightBus, bottomRightFftData, bottomRightFftDataPos,
+                                       bottomRightSubBass, bottomRightBass, bottomRightLowMid, bottomRightMid,
+                                       bottomRightHighMid, bottomRightHigh, bottomRightVeryHigh, bottomRightKick, bottomRightFull);
+
+                    // Mix sidechain audio into main output so it's audible
+                    for (int ch = 0; ch < juce::jmin(bottomRightBus.getNumChannels(), buffer.getNumChannels()); ++ch)
+                    {
+                        buffer.addFrom(ch, 0, bottomRightBus, ch, 0, bottomRightBus.getNumSamples());
+                    }
+                }
+            }
+        }
+    }
+
     // Only decay for standalone when not playing
     if (wrapperType == wrapperType_Standalone && (!playing || !audioLoaded))
     {
@@ -386,6 +509,172 @@ void AudioVisualizerProcessor::getSpectrumForRange(float minFreq, float maxFreq,
             output[i] = juce::jlimit(0.0f, 1.0f, magnitude * 0.1f);
         }
     }
+}
+
+void AudioVisualizerProcessor::analyzeSidechainBus(const juce::AudioBuffer<float>& bus,
+                                                   std::array<float, fftSize * 2>& fftDataArray,
+                                                   int& fftPos,
+                                                   std::atomic<float>& subBass, std::atomic<float>& bass,
+                                                   std::atomic<float>& lowMid, std::atomic<float>& mid,
+                                                   std::atomic<float>& highMid, std::atomic<float>& high,
+                                                   std::atomic<float>& veryHigh, std::atomic<float>& kick,
+                                                   std::atomic<float>& full)
+{
+    if (bus.getNumSamples() == 0) return;
+
+    for (int channel = 0; channel < bus.getNumChannels(); ++channel)
+    {
+        const float* channelData = bus.getReadPointer(channel);
+        for (int i = 0; i < bus.getNumSamples(); ++i)
+        {
+            fftDataArray[fftPos] = channelData[i];
+            fftPos++;
+
+            if (fftPos >= fftSize)
+            {
+                fftPos = 0;
+                window.multiplyWithWindowingTable(fftDataArray.data(), fftSize);
+                fft.performFrequencyOnlyForwardTransform(fftDataArray.data());
+
+                float sampleRate = getSampleRate();
+                float binWidth = sampleRate / fftSize;
+
+                int subBassStart = static_cast<int>(20.0f / binWidth);
+                int subBassEnd = static_cast<int>(60.0f / binWidth);
+                int bassStart = subBassEnd;
+                int bassEnd = static_cast<int>(250.0f / binWidth);
+                int kickStart = static_cast<int>(50.0f / binWidth);
+                int kickEnd = static_cast<int>(90.0f / binWidth);
+                int lowMidStart = bassEnd;
+                int lowMidEnd = static_cast<int>(500.0f / binWidth);
+                int midStart = lowMidEnd;
+                int midEnd = static_cast<int>(2000.0f / binWidth);
+                int highMidStart = midEnd;
+                int highMidEnd = static_cast<int>(4000.0f / binWidth);
+                int highStart = highMidEnd;
+                int highEnd = static_cast<int>(8000.0f / binWidth);
+                int veryHighStart = highEnd;
+                int veryHighEnd = static_cast<int>(20000.0f / binWidth);
+
+                float subBassVal = 0.0f, bassVal = 0.0f, kickVal = 0.0f;
+                float lowMidVal = 0.0f, midVal = 0.0f, highMidVal = 0.0f;
+                float highVal = 0.0f, veryHighVal = 0.0f, fullVal = 0.0f;
+
+                for (int bin = subBassStart; bin < subBassEnd && bin < fftSize / 2; ++bin)
+                    subBassVal += fftDataArray[bin];
+                for (int bin = bassStart; bin < bassEnd && bin < fftSize / 2; ++bin)
+                    bassVal += fftDataArray[bin];
+                for (int bin = kickStart; bin < kickEnd && bin < fftSize / 2; ++bin)
+                    kickVal += fftDataArray[bin];
+                for (int bin = lowMidStart; bin < lowMidEnd && bin < fftSize / 2; ++bin)
+                    lowMidVal += fftDataArray[bin];
+                for (int bin = midStart; bin < midEnd && bin < fftSize / 2; ++bin)
+                    midVal += fftDataArray[bin];
+                for (int bin = highMidStart; bin < highMidEnd && bin < fftSize / 2; ++bin)
+                    highMidVal += fftDataArray[bin];
+                for (int bin = highStart; bin < highEnd && bin < fftSize / 2; ++bin)
+                    highVal += fftDataArray[bin];
+                for (int bin = veryHighStart; bin < veryHighEnd && bin < fftSize / 2; ++bin)
+                    veryHighVal += fftDataArray[bin];
+                for (int bin = subBassStart; bin < veryHighEnd && bin < fftSize / 2; ++bin)
+                    fullVal += fftDataArray[bin];
+
+                subBassVal /= std::max(1, subBassEnd - subBassStart);
+                bassVal /= std::max(1, bassEnd - bassStart);
+                kickVal /= std::max(1, kickEnd - kickStart);
+                lowMidVal /= std::max(1, lowMidEnd - lowMidStart);
+                midVal /= std::max(1, midEnd - midStart);
+                highMidVal /= std::max(1, highMidEnd - highMidStart);
+                highVal /= std::max(1, highEnd - highStart);
+                veryHighVal /= std::max(1, veryHighEnd - veryHighStart);
+                fullVal /= std::max(1, veryHighEnd - subBassStart);
+
+                subBassVal *= 0.2f;
+                bassVal *= 0.25f;
+                kickVal *= 0.25f;
+                lowMidVal *= 0.75f;
+                midVal *= 1.0f;
+                highMidVal *= 1.5f;
+                highVal *= 2.5f;
+                veryHighVal *= 4.0f;
+                fullVal *= 0.5f;
+
+                subBass.store(juce::jlimit(0.0f, 1.0f, subBassVal));
+                bass.store(juce::jlimit(0.0f, 1.0f, bassVal));
+                lowMid.store(juce::jlimit(0.0f, 1.0f, lowMidVal));
+                mid.store(juce::jlimit(0.0f, 1.0f, midVal));
+                highMid.store(juce::jlimit(0.0f, 1.0f, highMidVal));
+                high.store(juce::jlimit(0.0f, 1.0f, highVal));
+                veryHigh.store(juce::jlimit(0.0f, 1.0f, veryHighVal));
+                kick.store(juce::jlimit(0.0f, 1.0f, kickVal));
+                full.store(juce::jlimit(0.0f, 1.0f, fullVal));
+            }
+        }
+    }
+}
+
+// Panel getters
+float AudioVisualizerProcessor::getSubBassEnergy(PanelID panel) const {
+    if (panel == Top) return topSubBass.load();
+    if (panel == BottomLeft) return bottomLeftSubBass.load();
+    if (panel == BottomRight) return bottomRightSubBass.load();
+    return subBassEnergy.load();
+}
+
+float AudioVisualizerProcessor::getBassEnergy(PanelID panel) const {
+    if (panel == Top) return topBass.load();
+    if (panel == BottomLeft) return bottomLeftBass.load();
+    if (panel == BottomRight) return bottomRightBass.load();
+    return bassEnergy.load();
+}
+
+float AudioVisualizerProcessor::getLowMidEnergy(PanelID panel) const {
+    if (panel == Top) return topLowMid.load();
+    if (panel == BottomLeft) return bottomLeftLowMid.load();
+    if (panel == BottomRight) return bottomRightLowMid.load();
+    return lowMidEnergy.load();
+}
+
+float AudioVisualizerProcessor::getMidEnergy(PanelID panel) const {
+    if (panel == Top) return topMid.load();
+    if (panel == BottomLeft) return bottomLeftMid.load();
+    if (panel == BottomRight) return bottomRightMid.load();
+    return midEnergy.load();
+}
+
+float AudioVisualizerProcessor::getHighMidEnergy(PanelID panel) const {
+    if (panel == Top) return topHighMid.load();
+    if (panel == BottomLeft) return bottomLeftHighMid.load();
+    if (panel == BottomRight) return bottomRightHighMid.load();
+    return highMidEnergy.load();
+}
+
+float AudioVisualizerProcessor::getHighEnergy(PanelID panel) const {
+    if (panel == Top) return topHigh.load();
+    if (panel == BottomLeft) return bottomLeftHigh.load();
+    if (panel == BottomRight) return bottomRightHigh.load();
+    return highEnergy.load();
+}
+
+float AudioVisualizerProcessor::getVeryHighEnergy(PanelID panel) const {
+    if (panel == Top) return topVeryHigh.load();
+    if (panel == BottomLeft) return bottomLeftVeryHigh.load();
+    if (panel == BottomRight) return bottomRightVeryHigh.load();
+    return veryHighEnergy.load();
+}
+
+float AudioVisualizerProcessor::getKickTransient(PanelID panel) const {
+    if (panel == Top) return topKick.load();
+    if (panel == BottomLeft) return bottomLeftKick.load();
+    if (panel == BottomRight) return bottomRightKick.load();
+    return kickTransient.load();
+}
+
+float AudioVisualizerProcessor::getFullSpectrum(PanelID panel) const {
+    if (panel == Top) return topFull.load();
+    if (panel == BottomLeft) return bottomLeftFull.load();
+    if (panel == BottomRight) return bottomRightFull.load();
+    return fullSpectrum.load();
 }
 
 // This creates new instances of the plugin
