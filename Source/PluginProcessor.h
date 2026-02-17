@@ -78,7 +78,7 @@ public:
     }
 
     // Get FFT spectrum data for frequency range
-    void getSpectrumForRange(float minFreq, float maxFreq, std::vector<float>& output, int numPoints) const;
+    void getSpectrumForRange(float minFreq, float maxFreq, std::vector<float>& output, int numPoints, PanelID panel = Main) const;
 
 private:
     juce::AudioFormatManager formatManager;

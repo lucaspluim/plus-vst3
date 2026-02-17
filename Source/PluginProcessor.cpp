@@ -476,10 +476,19 @@ void AudioVisualizerProcessor::setPlaying(bool shouldPlay)
     // The transport continues running silently in the background
 }
 
-void AudioVisualizerProcessor::getSpectrumForRange(float minFreq, float maxFreq, std::vector<float>& output, int numPoints) const
+void AudioVisualizerProcessor::getSpectrumForRange(float minFreq, float maxFreq, std::vector<float>& output, int numPoints, PanelID panel) const
 {
     output.clear();
     output.resize(numPoints, 0.0f);
+
+    // Select the appropriate FFT data array based on panel
+    const std::array<float, fftSize * 2>* fftDataPtr = &fftData;
+    if (panel == Top)
+        fftDataPtr = &topFftData;
+    else if (panel == BottomLeft)
+        fftDataPtr = &bottomLeftFftData;
+    else if (panel == BottomRight)
+        fftDataPtr = &bottomRightFftData;
 
     // Get sample rate from transport source
     double sampleRate = 44100.0; // Default
@@ -507,8 +516,8 @@ void AudioVisualizerProcessor::getSpectrumForRange(float minFreq, float maxFreq,
         if (bin < fftSize / 2)
         {
             // Get magnitude from FFT data (complex to magnitude)
-            float real = fftData[bin * 2];
-            float imag = fftData[bin * 2 + 1];
+            float real = (*fftDataPtr)[bin * 2];
+            float imag = (*fftDataPtr)[bin * 2 + 1];
             float magnitude = std::sqrt(real * real + imag * imag);
 
             // Normalize and scale for display

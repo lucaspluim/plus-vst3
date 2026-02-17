@@ -548,7 +548,7 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
             // Get spectrum data with moderate points for spiky but smooth curves
             std::vector<float> spectrum;
             int numPoints = 50; // More points for spikier appearance
-            audioProcessor.getSpectrumForRange(minFreq, maxFreq, spectrum, numPoints);
+            audioProcessor.getSpectrumForRange(minFreq, maxFreq, spectrum, numPoints, AudioVisualizerProcessor::Top);
 
             // Initialize smoothing buffer if needed
             if (topSpectrumSmooth.size() != spectrum.size())
@@ -693,7 +693,7 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
             // Get spectrum data with moderate points for spiky but smooth curves
             std::vector<float> spectrum;
             int numPoints = 50; // More points for spikier appearance
-            audioProcessor.getSpectrumForRange(minFreq, maxFreq, spectrum, numPoints);
+            audioProcessor.getSpectrumForRange(minFreq, maxFreq, spectrum, numPoints, AudioVisualizerProcessor::BottomLeft);
 
             // Initialize smoothing buffer if needed
             if (bottomLeftSpectrumSmooth.size() != spectrum.size())
@@ -838,7 +838,7 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
             // Get spectrum data with moderate points for spiky but smooth curves
             std::vector<float> spectrum;
             int numPoints = 50; // More points for spikier appearance
-            audioProcessor.getSpectrumForRange(minFreq, maxFreq, spectrum, numPoints);
+            audioProcessor.getSpectrumForRange(minFreq, maxFreq, spectrum, numPoints, AudioVisualizerProcessor::BottomRight);
 
             // Initialize smoothing buffer if needed
             if (bottomRightSpectrumSmooth.size() != spectrum.size())
