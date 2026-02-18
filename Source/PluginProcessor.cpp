@@ -101,6 +101,16 @@ void AudioVisualizerProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 {
     juce::ignoreUnused (midiMessages);
 
+    // Update DAW transport state so isPlaying() reflects reality in VST3/AU
+    if (wrapperType != wrapperType_Standalone)
+    {
+        bool hostIsPlaying = false;
+        if (auto* ph = getPlayHead())
+            if (auto pos = ph->getPosition())
+                hostIsPlaying = pos->getIsPlaying();
+        dacPlaying.store(hostIsPlaying);
+    }
+
     // Runtime check: use loaded audio only for Standalone builds
     bool usingLoadedAudio = (wrapperType == wrapperType_Standalone);
 
@@ -116,6 +126,11 @@ void AudioVisualizerProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
     // For VST3/AU: Don't clear buffer, audio passes through
+
+    // Skip all analysis when the DAW (or standalone transport) is paused —
+    // prevents adaptive normalization from drifting during silence
+    if (!isPlaying())
+        return;
 
     // Always perform FFT analysis on main input bus only (not sidechains)
     auto mainInputBus = getBusBuffer(buffer, true, 0);

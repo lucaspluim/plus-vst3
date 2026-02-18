@@ -43,9 +43,9 @@ public:
     void setPlaying(bool shouldPlay);
     bool isPlaying() const
     {
-        // VST3/AU always "playing" since audio flows from track
-        // Standalone uses the playing flag
-        return (wrapperType != wrapperType_Standalone) || playing;
+        if (wrapperType == wrapperType_Standalone)
+            return playing;
+        return dacPlaying.load();   // reflects actual DAW transport state
     }
 
     // Panel IDs for sidechain routing
@@ -91,6 +91,7 @@ private:
 
     bool audioLoaded = false;
     bool playing = false;
+    std::atomic<bool> dacPlaying { false };  // DAW transport state (VST3/AU)
 
     // FFT Analysis
     static constexpr int fftOrder = 11; // 2^11 = 2048 samples
