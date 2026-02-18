@@ -28,11 +28,13 @@ public:
     // Timer for animation
     void timerCallback() override;
 
-    // Mouse handling for double-click to open effect picker
+    // Mouse handling
     void mouseDoubleClick(const juce::MouseEvent& event) override;
     void mouseDown(const juce::MouseEvent& event) override;
+    void mouseUp(const juce::MouseEvent& event) override;
+    void mouseDrag(const juce::MouseEvent& event) override;
 
-    // Drag and drop for effects
+    // Drag and drop for effects (from picker)
     bool isInterestedInDragSource(const juce::DragAndDropTarget::SourceDetails& details) override;
     void itemDragEnter(const juce::DragAndDropTarget::SourceDetails& details) override;
     void itemDragMove(const juce::DragAndDropTarget::SourceDetails& details) override;
@@ -42,110 +44,147 @@ public:
 private:
     AudioVisualizerProcessor& audioProcessor;
 
-    // Visual state
     bool showLoadedMessage = false;
-    int loadedMessageTimer = 0;
-
+    int  loadedMessageTimer = 0;
     juce::String statusMessage = "Drop audio file here or press 'O' to open";
 
-    // Smoothed values for fluid animations - per section
-    float smoothedTopValue = 0.0f;
-    float smoothedBottomLeftValue = 0.0f;
-    float smoothedBottomRightValue = 0.0f;
-    static constexpr float visualSmoothingFactor = 0.7f; // Higher = smoother but slower response
-    static constexpr float pauseFadeFactor = 0.98f;      // Slow fade when paused
+    static constexpr float visualSmoothingFactor = 0.7f;
+    static constexpr float pauseFadeFactor       = 0.98f;
 
-    // Starfield effect - each section has independent state
-    struct Star {
-        float x, y, z;           // 3D position
-        float prevX, prevY, prevZ; // Previous position for drawing lines
-    };
+    // -------------------------------------------------------------------------
+    // Effect instances (implementations in separate .cpp files)
+    // -------------------------------------------------------------------------
+    struct Star { float x, y, z, prevX, prevY, prevZ; };
 
     struct StarfieldInstance {
         std::vector<Star> stars;
         float currentSpeed = 2.0f;
         juce::Random random;
-
-        StarfieldInstance()
-        {
-            stars.reserve(200);
-            initStars();
-        }
-
+        StarfieldInstance() { stars.reserve(200); initStars(); }
         void initStars();
         void update(float value, bool isBinaryMode);
-        void draw(juce::Graphics& g, const juce::Rectangle<int>& bounds, float centerX, float centerY, bool lightMode, juce::Colour starColor);
+        void draw(juce::Graphics& g, const juce::Rectangle<int>& bounds,
+                  float cx, float cy, bool lightMode, juce::Colour color);
     };
 
-    // Separate starfield instance for each section
-    StarfieldInstance topStarfield;
-    StarfieldInstance bottomLeftStarfield;
-    StarfieldInstance bottomRightStarfield;
-
-    // Rotating cube effect - each section has independent state
     struct RotatingCubeInstance {
-        float rotX = 0.0f;
-        float rotY = 0.0f;
-        float rotZ = 0.0f;
-        float speedX = 0.4f;
-        float speedY = 0.7f;
-        float speedZ = 0.2f;
+        float rotX = 0.0f, rotY = 0.0f, rotZ = 0.0f;
+        float speedX = 0.4f, speedY = 0.7f, speedZ = 0.2f;
         float scale  = 1.0f;
-
         void update(float value);
-        void draw(juce::Graphics& g, const juce::Rectangle<int>& bounds, bool lightMode, juce::Colour cubeColor);
+        void draw(juce::Graphics& g, const juce::Rectangle<int>& bounds,
+                  bool lightMode, juce::Colour color);
     };
 
-    RotatingCubeInstance topCube;
-    RotatingCubeInstance bottomLeftCube;
-    RotatingCubeInstance bottomRightCube;
+    // -------------------------------------------------------------------------
+    // Panel — all per-panel audio + visual state
+    // -------------------------------------------------------------------------
+    struct Panel {
+        int id = -1;
+        EffectConfig config;
+        StarfieldInstance starfield;
+        RotatingCubeInstance cube;
+        float smoothedValue = 0.0f;
+        float spectrumPeak  = 0.0001f;
+        std::vector<float> spectrumSmooth;
+        juce::Rectangle<int> bounds;                             // updated each frame
+        AudioVisualizerProcessor::PanelID procID = AudioVisualizerProcessor::Main;
+    };
 
-    // Effect system
-    EffectConfig topEffect { EffectType::FrequencyLine, FrequencyRange::Mids };
-    EffectConfig bottomLeftEffect { EffectType::Starfield, FrequencyRange::KickTransient };
-    EffectConfig bottomRightEffect { EffectType::Flutter, FrequencyRange::Highs };
+    std::vector<std::unique_ptr<Panel>> panels;
+    int nextPanelId = 0;
 
-    // Frequency line smoothing buffers (temporal smoothing across frames)
-    std::vector<float> topSpectrumSmooth;
-    std::vector<float> bottomLeftSpectrumSmooth;
-    std::vector<float> bottomRightSpectrumSmooth;
+    Panel* findPanel(int id) const;
+    int    panelAtPos(juce::Point<int> pos) const;
+    int    createPanel(EffectConfig cfg, AudioVisualizerProcessor::PanelID procID);
 
-    // Adaptive normalization - smoothed peak values for each panel
-    float topSpectrumPeak = 0.0001f;
-    float bottomLeftSpectrumPeak = 0.0001f;
-    float bottomRightSpectrumPeak = 0.0001f;
+    void renderPanel(juce::Graphics& g, Panel& p, float rawValue);
+    void renderFrequencyLine(juce::Graphics& g, Panel& p);
+    float getFrequencyValue(FrequencyRange range, AudioVisualizerProcessor::PanelID panel);
 
-    void renderEffect(juce::Graphics& g, const EffectConfig& config,
-                     float value, const juce::Rectangle<int>& bounds);
+    // -------------------------------------------------------------------------
+    // Binary split tree — defines panel layout
+    // -------------------------------------------------------------------------
+    struct LayoutNode {
+        enum class Split { V, H };  // V = top/bottom split, H = left/right split
+        bool isLeaf  = true;
+        int  panelId = -1;
+        Split split  = Split::V;
+        float ratio  = 0.5f;        // fraction of space given to 'first' child
+        std::unique_ptr<LayoutNode> first, second;
+    };
 
-    // Helper to get the frequency value based on FrequencyRange and panel
-    float getFrequencyValue(FrequencyRange range, AudioVisualizerProcessor::PanelID panel = AudioVisualizerProcessor::Main);
+    std::unique_ptr<LayoutNode> layoutRoot;
 
-    // Effect picker UI
+    static std::unique_ptr<LayoutNode> makeLeaf(int panelId);
+    static std::unique_ptr<LayoutNode> makeSplit(LayoutNode::Split s,
+                                                  std::unique_ptr<LayoutNode> a,
+                                                  std::unique_ptr<LayoutNode> b,
+                                                  float ratio = 0.5f);
+
+    void computeBounds(LayoutNode* node, juce::Rectangle<int> area);
+    int  countLeaves(const LayoutNode* node) const;
+    bool containsPanel(const LayoutNode* node, int id) const;
+
+    static LayoutNode* findLeaf(LayoutNode* node, int panelId);
+
+    std::unique_ptr<LayoutNode>
+        removeNode(std::unique_ptr<LayoutNode> node, int panelId);
+
+    std::unique_ptr<LayoutNode>
+        insertSplit(std::unique_ptr<LayoutNode> node,
+                    int targetId, int newId,
+                    LayoutNode::Split dir, bool newFirst);
+
+    void splitPanel(int targetId, LayoutNode::Split dir, bool newFirst);
+    void closePanel(int panelId);
+    void swapPanels(int a, int b);
+
+    // -------------------------------------------------------------------------
+    // Panel drag (rearranging panels by click-and-hold)
+    // -------------------------------------------------------------------------
+    int              pdDragId   = -1;     // panel being dragged; -1 = none started
+    bool             pdActive   = false;  // drag animation is live
+    juce::Point<int> pdStartPos;
+    juce::int64      pdStartMs  = 0;
+    juce::Point<int> pdCurPos;
+
+    static constexpr int kDragDelayMs = 300;
+    static constexpr int kDragMinPx   = 4;
+
+    struct DropZone {
+        enum class Act { Top, Bottom, Left, Right, Swap };
+        juce::Rectangle<int> bounds;
+        int  targetId = -1;
+        Act  act      = Act::Swap;
+    };
+
+    std::vector<DropZone> dz;
+    int hoveredDz = -1;
+
+    void buildDropZones();
+    void updateHoverDz(juce::Point<int> pos);
+    void execDrop(int dzIdx);
+
+    // -------------------------------------------------------------------------
+    // Effect picker overlay
+    // -------------------------------------------------------------------------
     bool effectPickerVisible = false;
     void toggleEffectPicker();
 
-    // UI settings
-    bool showDebugValues = true;  // Show frequency debug values
-    bool lightMode = false;        // Light mode vs dark mode
-    juce::Colour selectedColor = juce::Colours::white;  // Color for next effect
+    bool lightMode       = false;
+    bool showDebugValues = true;
+    juce::Colour selectedColor = juce::Colours::white;
 
-    // Drag and drop state
-    SectionID hoveredSection = SectionID::Top;
-    bool isDraggingEffect = false;
-    juce::Rectangle<int> topSectionBounds;
-    juce::Rectangle<int> bottomLeftSectionBounds;
-    juce::Rectangle<int> bottomRightSectionBounds;
+    bool isDraggingEffect   = false;
+    int  effectHoverPanelId = -1;
 
-    // Effect box bounds for drag detection
     juce::Rectangle<int> effectBoxBounds[5];
     juce::Rectangle<int> lightModeToggleBounds;
     juce::Rectangle<int> colorPickerBounds;
-    void mouseDrag(const juce::MouseEvent& event) override;
 
-    // Right-click menu
-    void showFrequencyMenu(SectionID section);
-    void applyEffectToSection(SectionID section, EffectType effect, juce::Colour color);
+    void showPanelMenu(int panelId);
+    void applyEffectToPanel(int panelId, EffectType effect, juce::Colour color);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioVisualizerEditor)
 };
