@@ -535,7 +535,7 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
         {
             juce::Graphics::ScopedSaveState clip(g);
             g.reduceClipRegion(panel->bounds);
-            renderPanel(g, *panel, rawValue);
+            renderPanel(g, *panel, panel->smoothedValue);
 
             // Effect-drop hover highlight
             if (isDraggingEffect && panel->id == effectHoverPanelId)
