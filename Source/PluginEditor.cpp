@@ -1001,20 +1001,29 @@ void AudioVisualizerEditor::mouseDown(const juce::MouseEvent& event)
         return;
     }
 
-    // --- Left-click in visualizer: click-group tracking + potential panel drag ---
+    // --- Left-click in visualizer: pair-detect toggle + potential panel drag ---
     auto vizBounds = getLocalBounds();
     if (effectPickerVisible) vizBounds.removeFromRight(220);
 
     if (vizBounds.contains(pos))
     {
-        // Count this click for grouped double-click detection
-        panelClickCount++;
-        panelClickGroupMs = juce::Time::currentTimeMillis();
+        // Immediate pair detection: 2nd click of a pair fires the toggle right away.
+        // After consuming a pair, reset so click 3 starts a fresh potential pair.
+        auto now = juce::Time::currentTimeMillis();
+        if (lastPanelClickMs > 0 && (now - lastPanelClickMs) <= kDoubleClickWindowMs)
+        {
+            toggleEffectPicker();
+            lastPanelClickMs = 0; // consumed; next click starts fresh
+        }
+        else
+        {
+            lastPanelClickMs = now;
+        }
 
         int id = panelAtPos(pos);
         if (id >= 0)
         {
-            pdDragId  = id;
+            pdDragId   = id;
             pdStartPos = pos;
             pdCurPos   = pos;
             pdStartMs  = juce::Time::currentTimeMillis();
@@ -1234,20 +1243,6 @@ void AudioVisualizerEditor::timerCallback()
         }
     }
 
-    // Click-group flush: once no new click arrives for kClickGroupWindowMs,
-    // process the accumulated count — every pair of clicks = one toggle.
-    if (panelClickGroupMs > 0)
-    {
-        auto now = juce::Time::currentTimeMillis();
-        if ((now - panelClickGroupMs) >= kClickGroupWindowMs)
-        {
-            int numToggles = panelClickCount / 2;
-            for (int i = 0; i < numToggles; ++i)
-                toggleEffectPicker();
-            panelClickCount   = 0;
-            panelClickGroupMs = 0;
-        }
-    }
 
     // Loaded message countdown
     if (showLoadedMessage)

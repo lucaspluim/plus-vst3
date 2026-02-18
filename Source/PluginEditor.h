@@ -150,13 +150,12 @@ private:
     juce::int64      pdStartMs  = 0;
     juce::Point<int> pdCurPos;
 
-    static constexpr int kDragDelayMs       = 300;
-    static constexpr int kDragMinPx         = 4;
-    static constexpr int kClickGroupWindowMs = 400;  // group rapid clicks into one action
+    static constexpr int kDragDelayMs        = 300;
+    static constexpr int kDragMinPx          = 4;
+    static constexpr int kDoubleClickWindowMs = 350; // pair-detection window
 
-    // Click-group tracking for picker toggle
-    int         panelClickCount   = 0;
-    juce::int64 panelClickGroupMs = 0;
+    // Click-pair tracking for picker toggle (fires immediately on 2nd click)
+    juce::int64 lastPanelClickMs = 0;
 
     struct DropZone {
         enum class Act { Top, Bottom, Left, Right, Swap };
