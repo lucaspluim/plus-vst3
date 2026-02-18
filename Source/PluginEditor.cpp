@@ -447,22 +447,29 @@ void AudioVisualizerEditor::renderPanel(juce::Graphics& g, Panel& p, float rawVa
     auto& b = p.bounds;
     auto  t = p.config.type;
 
+    // Effective background: apply-all override → per-panel override → light/dark default
+    juce::Colour bg;
+    if (bgColorApplyAll)
+        bg = selectedBgColor;
+    else if (p.hasBgOverride)
+        bg = p.bgColor;
+    else
+        bg = lightMode ? juce::Colours::white : juce::Colours::black;
+
     if (t == EffectType::Flutter)
     {
-        auto bg = lightMode ? juce::Colours::white : juce::Colours::black;
         g.setColour(bg.interpolatedWith(p.config.effectColor, p.smoothedValue));
         g.fillRect(b);
     }
     else if (t == EffectType::BinaryFlash)
     {
         bool flash = p.smoothedValue > 0.3f;
-        g.setColour(flash ? p.config.effectColor
-                           : (lightMode ? juce::Colours::white : juce::Colours::black));
+        g.setColour(flash ? p.config.effectColor : bg);
         g.fillRect(b);
     }
     else if (t == EffectType::Starfield)
     {
-        g.setColour(lightMode ? juce::Colours::white : juce::Colours::black);
+        g.setColour(bg);
         g.fillRect(b);
         bool binaryMode = (p.config.frequencyRange == FrequencyRange::KickTransient);
         float cx = b.getX() + b.getWidth()  * 0.5f;
@@ -472,14 +479,14 @@ void AudioVisualizerEditor::renderPanel(juce::Graphics& g, Panel& p, float rawVa
     }
     else if (t == EffectType::RotatingCube)
     {
-        g.setColour(lightMode ? juce::Colours::white : juce::Colours::black);
+        g.setColour(bg);
         g.fillRect(b);
         p.cube.update(rawValue);
         p.cube.draw(g, b, lightMode, p.config.effectColor);
     }
     else if (t == EffectType::FrequencyLine)
     {
-        g.setColour(lightMode ? juce::Colours::white : juce::Colours::black);
+        g.setColour(bg);
         g.fillRect(b);
         renderFrequencyLine(g, p);
     }
@@ -587,6 +594,30 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
             g.setColour(juce::Colours::white.withAlpha(0.5f));
             g.drawRect(src->bounds.toFloat(), 3.0f);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // BG color drag overlay
+    // -------------------------------------------------------------------------
+    if (bgDragActive)
+    {
+        if (bgHoverPanelId >= 0)
+        {
+            if (auto* p = findPanel(bgHoverPanelId))
+            {
+                g.setColour(selectedBgColor.withAlpha(0.45f));
+                g.fillRect(p->bounds);
+                g.setColour(juce::Colours::white.withAlpha(0.85f));
+                g.drawRect(p->bounds.toFloat(), 2.0f);
+            }
+        }
+        // Colour dot following cursor
+        float dcx = (float)bgDragCurPos.getX();
+        float dcy = (float)bgDragCurPos.getY();
+        g.setColour(selectedBgColor);
+        g.fillEllipse(dcx - 10.0f, dcy - 10.0f, 20.0f, 20.0f);
+        g.setColour(juce::Colours::white.withAlpha(0.85f));
+        g.drawEllipse(dcx - 10.0f, dcy - 10.0f, 20.0f, 20.0f, 1.5f);
     }
 
     // -------------------------------------------------------------------------
@@ -745,6 +776,36 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
         g.setColour(lightMode ? juce::Colours::black.withAlpha(0.55f)
                               : juce::Colours::white.withAlpha(0.90f));
         g.fillEllipse(dotCX - 7.0f, dotCY - 7.0f, 14.0f, 14.0f);
+
+        // ---- Vertical separator between L and R toggle sections ----
+        g.setColour(sepCol);
+        g.fillRect(juce::Rectangle<int>(toggleArea.getX() + 110,
+                                         toggleArea.getY() + 8, 1,
+                                         toggleArea.getHeight() - 16));
+
+        // ---- BG color swatch ----
+        bgColorPickerBounds = juce::Rectangle<int>(toggleArea.getX() + 118,
+                                                    toggleArea.getCentreY() - 7, 14, 14);
+        g.setColour(selectedBgColor);
+        g.fillRoundedRectangle(bgColorPickerBounds.toFloat(), 2.0f);
+        g.setColour(sepCol);
+        g.drawRoundedRectangle(bgColorPickerBounds.toFloat(), 2.0f, 1.0f);
+
+        // ---- BG apply-all toggle pill ----
+        auto bgSwitch = juce::Rectangle<int>(toggleArea.getX() + 140,
+                                              toggleArea.getCentreY() - 11, 44, 22);
+        bgColorToggleBounds = bgSwitch;
+        g.setColour(bgColorApplyAll ? juce::Colour(0, 122, 255)
+                                    : (lightMode ? juce::Colour(190, 190, 205)
+                                                 : juce::Colour(50, 50, 62)));
+        g.fillRoundedRectangle(bgSwitch.toFloat(), 11.0f);
+        float bgDotX = bgColorApplyAll ? (float)(bgSwitch.getRight() - 14)
+                                       : (float)(bgSwitch.getX()     + 14);
+        float bgDotY = (float)bgSwitch.getCentreY();
+        g.setColour(bgColorApplyAll ? juce::Colours::white
+                                    : (lightMode ? juce::Colours::black.withAlpha(0.55f)
+                                                 : juce::Colours::white.withAlpha(0.90f)));
+        g.fillEllipse(bgDotX - 7.0f, bgDotY - 7.0f, 14.0f, 14.0f);
     }
 
     // -------------------------------------------------------------------------
@@ -919,6 +980,23 @@ void AudioVisualizerEditor::mouseDown(const juce::MouseEvent& event)
             repaint();
             return;
         }
+
+        if (bgColorPickerBounds.contains(pos))
+        {
+            // Start tracking — quick click opens picker, hold+drag paints a panel
+            bgDragStartPos = pos;
+            bgDragCurPos   = pos;
+            bgDragStartMs  = juce::Time::currentTimeMillis();
+            bgDragActive   = false;
+            return;
+        }
+
+        if (bgColorToggleBounds.contains(pos))
+        {
+            bgColorApplyAll = !bgColorApplyAll;
+            repaint();
+            return;
+        }
     }
 
     // --- Right-click: panel options menu ---
@@ -960,6 +1038,100 @@ void AudioVisualizerEditor::mouseUp(const juce::MouseEvent& event)
     dz.clear();
     hoveredDz = -1;
 
+    // BG color drag resolution
+    if (bgDragStartMs > 0)
+    {
+        if (bgDragActive)
+        {
+            // Drop: paint the hovered panel's background
+            if (bgHoverPanelId >= 0)
+                if (auto* p = findPanel(bgHoverPanelId))
+                {
+                    p->bgColor       = selectedBgColor;
+                    p->hasBgOverride = true;
+                }
+        }
+        else
+        {
+            // Quick click: open BG colour picker popup
+            struct BgColourPickerWithHex : public juce::Component,
+                                           public juce::ChangeListener,
+                                           public juce::TextEditor::Listener
+            {
+                BgColourPickerWithHex(AudioVisualizerEditor& ed, juce::Colour init)
+                    : editor(ed)
+                {
+                    colourSelector = std::make_unique<juce::ColourSelector>(
+                        juce::ColourSelector::showColourAtTop |
+                        juce::ColourSelector::showColourspace);
+                    colourSelector->setCurrentColour(init);
+                    colourSelector->addChangeListener(this);
+                    addAndMakeVisible(*colourSelector);
+
+                    hexInput = std::make_unique<juce::TextEditor>();
+                    hexInput->setText(init.toDisplayString(false), false);
+                    hexInput->setJustification(juce::Justification::centred);
+                    hexInput->addListener(this);
+                    addAndMakeVisible(*hexInput);
+
+                    addAndMakeVisible(hexLabel);
+                    hexLabel.setText("Hex:", juce::dontSendNotification);
+                    hexLabel.setJustificationType(juce::Justification::centredRight);
+                    hexLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+
+                    setSize(300, 350);
+                }
+
+                void resized() override
+                {
+                    auto b = getLocalBounds();
+                    auto hexArea = b.removeFromBottom(40).reduced(10, 5);
+                    hexLabel.setBounds(hexArea.removeFromLeft(40));
+                    hexInput->setBounds(hexArea);
+                    colourSelector->setBounds(b);
+                }
+
+                void changeListenerCallback(juce::ChangeBroadcaster* src) override
+                {
+                    if (auto* cs = dynamic_cast<juce::ColourSelector*>(src))
+                    {
+                        auto c = cs->getCurrentColour();
+                        editor.selectedBgColor = c;
+                        hexInput->setText(c.toDisplayString(false), false);
+                        editor.repaint();
+                    }
+                }
+
+                void textEditorTextChanged(juce::TextEditor& ed) override
+                {
+                    auto hex = ed.getText().trim().trimCharactersAtStart("#");
+                    if (hex.length() == 6)
+                    {
+                        auto c = juce::Colour::fromString("ff" + hex);
+                        colourSelector->setCurrentColour(c, juce::dontSendNotification);
+                        editor.selectedBgColor = c;
+                        editor.repaint();
+                    }
+                }
+
+                void textEditorReturnKeyPressed(juce::TextEditor& ed) override { textEditorTextChanged(ed); }
+                void textEditorFocusLost(juce::TextEditor& ed) override        { textEditorTextChanged(ed); }
+
+                AudioVisualizerEditor& editor;
+                std::unique_ptr<juce::ColourSelector> colourSelector;
+                std::unique_ptr<juce::TextEditor> hexInput;
+                juce::Label hexLabel;
+            };
+
+            auto picker = std::make_unique<BgColourPickerWithHex>(*this, selectedBgColor);
+            juce::CallOutBox::launchAsynchronously(std::move(picker), bgColorPickerBounds, this);
+        }
+
+        bgDragStartMs  = 0;
+        bgDragActive   = false;
+        bgHoverPanelId = -1;
+    }
+
     repaint();
 }
 
@@ -967,6 +1139,21 @@ void AudioVisualizerEditor::mouseDrag(const juce::MouseEvent& event)
 {
     auto pos = event.getPosition();
     pdCurPos = pos;
+
+    // Track BG drag cursor (needed for both activation check and live overlay)
+    if (bgDragStartMs > 0)
+    {
+        bgDragCurPos = pos;
+        if (bgDragActive)
+        {
+            bgHoverPanelId = -1;
+            auto vizB = getLocalBounds();
+            if (effectPickerVisible) vizB.removeFromRight(220);
+            if (vizB.contains(pos))
+                bgHoverPanelId = panelAtPos(pos);
+            repaint();
+        }
+    }
 
     // --- Effect picker drag (drag effect onto panel) ---
     if (!pdActive && effectPickerVisible)
@@ -1033,6 +1220,18 @@ void AudioVisualizerEditor::timerCallback()
         {
             pdActive = true;
             buildDropZones();
+            repaint();
+        }
+    }
+
+    // BG color drag: activate after hold delay
+    if (bgDragStartMs > 0 && !bgDragActive)
+    {
+        auto elapsed = juce::Time::currentTimeMillis() - bgDragStartMs;
+        auto dist    = (float)bgDragCurPos.getDistanceFrom(bgDragStartPos);
+        if (elapsed >= kDragDelayMs && dist >= (float)kDragMinPx)
+        {
+            bgDragActive = true;
             repaint();
         }
     }

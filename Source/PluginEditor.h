@@ -89,6 +89,8 @@ private:
         std::vector<float> spectrumSmooth;
         juce::Rectangle<int> bounds;                             // updated each frame
         AudioVisualizerProcessor::PanelID procID = AudioVisualizerProcessor::Main;
+        juce::Colour bgColor       = juce::Colours::black;
+        bool         hasBgOverride = false;
     };
 
     std::vector<std::unique_ptr<Panel>> panels;
@@ -182,6 +184,19 @@ private:
     juce::Rectangle<int> effectBoxBounds[5];
     juce::Rectangle<int> lightModeToggleBounds;
     juce::Rectangle<int> colorPickerBounds;
+
+    // Background color picker (footer of effects menu)
+    juce::Colour         selectedBgColor     = juce::Colours::black;
+    bool                 bgColorApplyAll     = false;
+    juce::Rectangle<int> bgColorPickerBounds;
+    juce::Rectangle<int> bgColorToggleBounds;
+
+    // Background color drag (hold-to-drag swatch onto a panel)
+    bool             bgDragActive    = false;
+    juce::Point<int> bgDragStartPos;
+    juce::int64      bgDragStartMs   = 0;
+    juce::Point<int> bgDragCurPos;
+    int              bgHoverPanelId  = -1;
 
     int effectListScrollOffset = 0;   // px scrolled into the list
     int effectListAreaH        = 300; // visible list height (set each paint)
