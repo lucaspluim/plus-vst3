@@ -8,24 +8,32 @@
 AudioVisualizerEditor::AudioVisualizerEditor (AudioVisualizerProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    setSize (800, 600);
+    setSize (300, 400);
     setWantsKeyboardFocus(true);
     setResizable(true, false);
 
-    // Create the initial three panels, matching original configs
-    int topId = createPanel({ EffectType::FrequencyLine, FrequencyRange::Mids  },
+    // Default layout:
+    //   Top half     — Flutter / Highs
+    //   Bottom left  — RotatingCube / Mids
+    //   Bottom right — VSplit:
+    //       top      — Starfield / KickTransient
+    //       bottom   — FrequencyLine / FullSpectrum
+    int topId = createPanel({ EffectType::Flutter,       FrequencyRange::Highs         },
                               AudioVisualizerProcessor::Top);
-    int blId  = createPanel({ EffectType::Starfield,     FrequencyRange::KickTransient },
+    int blId  = createPanel({ EffectType::RotatingCube,  FrequencyRange::Mids          },
                               AudioVisualizerProcessor::BottomLeft);
-    int brId  = createPanel({ EffectType::Flutter,       FrequencyRange::Highs },
-                              AudioVisualizerProcessor::BottomRight);
+    int brTopId = createPanel({ EffectType::Starfield,   FrequencyRange::KickTransient },
+                               AudioVisualizerProcessor::BottomRight);
+    int brBotId = createPanel({ EffectType::FrequencyLine, FrequencyRange::FullSpectrum },
+                               AudioVisualizerProcessor::Main);
 
-    // top half, then bottom half split left/right
     layoutRoot = makeSplit(LayoutNode::Split::V,
                            makeLeaf(topId),
                            makeSplit(LayoutNode::Split::H,
                                      makeLeaf(blId),
-                                     makeLeaf(brId)));
+                                     makeSplit(LayoutNode::Split::V,
+                                               makeLeaf(brTopId),
+                                               makeLeaf(brBotId))));
 
     juce::Timer::callAfterDelay(100, [this]()
     {
@@ -651,7 +659,7 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
         effectListScrollOffset = juce::jlimit(0, maxScroll, effectListScrollOffset);
 
         static const char* kEffectNames[] = {
-            "Binary Flash", "Flutter", "Starfield", "Frequency Line", "3D Cube"
+            "Binary Flash", "Flutter", "Starfield", "Spectrum", "3D Cube"
         };
 
         {
@@ -722,8 +730,9 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
         g.fillRect(juce::Rectangle<int>(toggleArea.getX(), toggleArea.getY(),
                                          toggleArea.getWidth(), 1));
 
-        auto switchArea = juce::Rectangle<int>(0, 0, 44, 22)
-                              .withCentre(toggleArea.getCentre());
+        auto switchArea = juce::Rectangle<int>(toggleArea.getX() + 18,
+                                               toggleArea.getCentreY() - 11,
+                                               44, 22);
         lightModeToggleBounds = switchArea;
 
         g.setColour(lightMode ? juce::Colour(190, 190, 205) : juce::Colour(50, 50, 62));
@@ -990,7 +999,7 @@ void AudioVisualizerEditor::mouseDrag(const juce::MouseEvent& event)
                 dg.setColour(juce::Colours::white);
                 dg.setFont(14.0f);
                 static const char* kNames[] = {
-                    "Binary Flash","Flutter","Starfield","Frequency Line","3D Cube"
+                    "Binary Flash","Flutter","Starfield","Spectrum","3D Cube"
                 };
                 dg.drawText(kNames[i], juce::Rectangle<int>(30, 0, 70, 40),
                             juce::Justification::centredLeft);
