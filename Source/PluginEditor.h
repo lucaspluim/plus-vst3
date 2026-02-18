@@ -92,6 +92,11 @@ private:
     std::vector<float> bottomLeftSpectrumSmooth;
     std::vector<float> bottomRightSpectrumSmooth;
 
+    // Adaptive normalization - smoothed peak values for each panel
+    float topSpectrumPeak = 0.0001f;
+    float bottomLeftSpectrumPeak = 0.0001f;
+    float bottomRightSpectrumPeak = 0.0001f;
+
     void renderEffect(juce::Graphics& g, const EffectConfig& config,
                      float value, const juce::Rectangle<int>& bounds);
 

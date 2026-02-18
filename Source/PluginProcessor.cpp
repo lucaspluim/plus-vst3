@@ -259,20 +259,16 @@ void AudioVisualizerProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                     // Kick transient detection - VERY selective criteria
                     float kickChange = kickNormalized - previousBassForKick;
 
-                    // Multiple strict conditions must ALL be met:
-                    bool sharpIncrease = kickChange > 0.35f;               // Very sharp increase (3x more selective)
-                    bool strongEnergy = kickNormalized > 0.45f;            // Must be strong kick (2x higher threshold)
-                    bool significantlyAboveAverage = kickNormalized > 1.5f; // Must be well above average
+                    // Simplified kick detection: focus on transient + reasonable energy
+                    bool sharpTransient = kickChange > 0.2f;      // Sharp increase indicates transient
+                    bool hasEnergy = kickNormalized > 0.3f;       // Has some energy (not total silence)
                     bool cooldownReady = kickCooldown <= 0;
 
-                    // Only trigger if ALL conditions met
-                    if (sharpIncrease &&
-                        strongEnergy &&
-                        significantlyAboveAverage &&
-                        cooldownReady)
+                    // Trigger on transient with energy
+                    if (sharpTransient && hasEnergy && cooldownReady)
                     {
                         kickDecay = 1.0f;  // Trigger flash
-                        kickCooldown = 20; // Even longer cooldown (~300ms minimum between kicks)
+                        kickCooldown = 3; // Short cooldown to allow fast kick patterns
                     }
 
                     // Decay kick flash quickly (mimics transient duration)
@@ -481,14 +477,15 @@ void AudioVisualizerProcessor::getSpectrumForRange(float minFreq, float maxFreq,
     output.clear();
     output.resize(numPoints, 0.0f);
 
-    // Select the appropriate FFT data array based on panel
+    // Select the appropriate FFT data array based on panel and whether it has active sidechain
     const std::array<float, fftSize * 2>* fftDataPtr = &fftData;
-    if (panel == Top)
+    if (panel == Top && topHasSidechain.load())
         fftDataPtr = &topFftData;
-    else if (panel == BottomLeft)
+    else if (panel == BottomLeft && bottomLeftHasSidechain.load())
         fftDataPtr = &bottomLeftFftData;
-    else if (panel == BottomRight)
+    else if (panel == BottomRight && bottomRightHasSidechain.load())
         fftDataPtr = &bottomRightFftData;
+    // Otherwise use main fftData
 
     // Get sample rate from transport source
     double sampleRate = 44100.0; // Default

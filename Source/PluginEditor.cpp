@@ -488,6 +488,10 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
 
     // TOP HALF: Render based on effect config
     {
+        // Clip all rendering to panel bounds
+        juce::Graphics::ScopedSaveState sectionClip(g);
+        g.reduceClipRegion(topHalf);
+
         // Render effect based on topEffect.type
         if (topEffect.type == EffectType::Flutter)
         {
@@ -586,28 +590,67 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
                 topSpectrumSmooth[i] = smoothedSpectrum[i]; // Store for next frame
             }
 
-            // Draw smooth frequency line using cubic curves
+            // For kick transient mode, modulate spectrum by actual kick detection
+            if (topEffect.frequencyRange == FrequencyRange::KickTransient)
+            {
+                float kickValue = audioProcessor.getKickTransient(AudioVisualizerProcessor::Top);
+                for (int i = 0; i < (int)smoothedSpectrum.size(); ++i)
+                {
+                    smoothedSpectrum[i] *= kickValue;  // Only show high values during detected kicks
+                }
+            }
+
+            // amplitudeGain for visual dynamics
+            float amplitudeGain = 1.5f;
+
+            // Draw smooth frequency line - only draw points within bounds
             if (!smoothedSpectrum.empty() && smoothedSpectrum.size() > 1)
             {
+                // Save graphics state and clip to panel bounds
+                juce::Graphics::ScopedSaveState saveState(g);
+                g.reduceClipRegion(topHalf);
+
+                // Adaptive normalization - find current peak and smooth it over time
+                float currentPeak = 0.0001f;
+                for (int i = 0; i < (int)smoothedSpectrum.size(); ++i)
+                {
+                    if (smoothedSpectrum[i] > currentPeak)
+                        currentPeak = smoothedSpectrum[i];
+                }
+
+                // Smooth the peak: fast attack, medium release for adaptive scaling
+                if (currentPeak > topSpectrumPeak)
+                    topSpectrumPeak = topSpectrumPeak * 0.3f + currentPeak * 0.7f;  // Fast attack
+                else
+                    topSpectrumPeak = topSpectrumPeak * 0.92f + currentPeak * 0.08f;  // Medium release
+
+                // Normalize by smoothed peak to keep visualization in reasonable range
+                float normalizationFactor = topSpectrumPeak * amplitudeGain;
+                for (int i = 0; i < (int)smoothedSpectrum.size(); ++i)
+                {
+                    smoothedSpectrum[i] /= normalizationFactor;
+                }
+
                 juce::Path linePath;
                 float xScale = (float)topHalf.getWidth() / (float)(smoothedSpectrum.size() - 1);
-                float amplitudeGain = 1.5f; // Amplify the height for more dynamic movement
 
-                // Start path
+                // Calculate first Y with clamping
                 float firstY = topHalf.getBottom() - (smoothedSpectrum[0] * amplitudeGain * topHalf.getHeight());
+                firstY = juce::jlimit((float)topHalf.getY(), (float)topHalf.getBottom(), firstY);
                 linePath.startNewSubPath((float)topHalf.getX(), firstY);
 
-                // Use cubic curves with tighter control points for spikier but smooth curves
+                // Draw smooth cubic curves with all points clamped to bounds
                 for (int i = 1; i < (int)smoothedSpectrum.size(); ++i)
                 {
                     float x = topHalf.getX() + (i * xScale);
                     float y = topHalf.getBottom() - (smoothedSpectrum[i] * amplitudeGain * topHalf.getHeight());
+                    y = juce::jlimit((float)topHalf.getY(), (float)topHalf.getBottom(), y);
 
-                    // Get control points for sharper, spikier curves
                     float prevX = topHalf.getX() + ((i - 1) * xScale);
                     float prevY = topHalf.getBottom() - (smoothedSpectrum[i - 1] * amplitudeGain * topHalf.getHeight());
+                    prevY = juce::jlimit((float)topHalf.getY(), (float)topHalf.getBottom(), prevY);
 
-                    // Tighter control points for less curvy, more angular appearance
+                    // Control points for smooth curves - also clamped
                     float ctrlX1 = prevX + (x - prevX) * 0.25f;
                     float ctrlY1 = prevY;
                     float ctrlX2 = prevX + (x - prevX) * 0.75f;
@@ -617,9 +660,12 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
                 }
 
                 // Draw ultra-thin, rounded line
-                g.setColour(topEffect.effectColor);
-                juce::PathStrokeType strokeType(1.15f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
-                g.strokePath(linePath, strokeType);
+                if (!linePath.isEmpty())
+                {
+                    g.setColour(topEffect.effectColor);
+                    juce::PathStrokeType strokeType(1.15f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+                    g.strokePath(linePath, strokeType);
+                }
             }
         }
 
@@ -633,6 +679,10 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
 
     // BOTTOM LEFT: Render based on effect config
     {
+        // Clip all rendering to panel bounds
+        juce::Graphics::ScopedSaveState sectionClip(g);
+        g.reduceClipRegion(bottomLeft);
+
         // Render effect based on bottomLeftEffect.type
         if (bottomLeftEffect.type == EffectType::Flutter)
         {
@@ -731,28 +781,67 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
                 bottomLeftSpectrumSmooth[i] = smoothedSpectrum[i]; // Store for next frame
             }
 
-            // Draw smooth frequency line using cubic curves
+            // For kick transient mode, modulate spectrum by actual kick detection
+            if (bottomLeftEffect.frequencyRange == FrequencyRange::KickTransient)
+            {
+                float kickValue = audioProcessor.getKickTransient(AudioVisualizerProcessor::BottomLeft);
+                for (int i = 0; i < (int)smoothedSpectrum.size(); ++i)
+                {
+                    smoothedSpectrum[i] *= kickValue;  // Only show high values during detected kicks
+                }
+            }
+
+            // amplitudeGain for visual dynamics
+            float amplitudeGain = 1.5f;
+
+            // Draw smooth frequency line - only draw points within bounds
             if (!smoothedSpectrum.empty() && smoothedSpectrum.size() > 1)
             {
+                // Save graphics state and clip to panel bounds
+                juce::Graphics::ScopedSaveState saveState(g);
+                g.reduceClipRegion(bottomLeft);
+
+                // Adaptive normalization - find current peak and smooth it over time
+                float currentPeak = 0.0001f;
+                for (int i = 0; i < (int)smoothedSpectrum.size(); ++i)
+                {
+                    if (smoothedSpectrum[i] > currentPeak)
+                        currentPeak = smoothedSpectrum[i];
+                }
+
+                // Smooth the peak: fast attack (0.3), slow release (0.995)
+                if (currentPeak > bottomLeftSpectrumPeak)
+                    bottomLeftSpectrumPeak = bottomLeftSpectrumPeak * 0.3f + currentPeak * 0.7f;  // Fast attack
+                else
+                    bottomLeftSpectrumPeak = bottomLeftSpectrumPeak * 0.995f + currentPeak * 0.005f;  // Slow release
+
+                // Normalize by smoothed peak to keep visualization in reasonable range
+                float normalizationFactor = bottomLeftSpectrumPeak * amplitudeGain;
+                for (int i = 0; i < (int)smoothedSpectrum.size(); ++i)
+                {
+                    smoothedSpectrum[i] /= normalizationFactor;
+                }
+
                 juce::Path linePath;
                 float xScale = (float)bottomLeft.getWidth() / (float)(smoothedSpectrum.size() - 1);
-                float amplitudeGain = 1.5f; // Amplify the height for more dynamic movement
 
-                // Start path
+                // Calculate first Y with clamping
                 float firstY = bottomLeft.getBottom() - (smoothedSpectrum[0] * amplitudeGain * bottomLeft.getHeight());
+                firstY = juce::jlimit((float)bottomLeft.getY(), (float)bottomLeft.getBottom(), firstY);
                 linePath.startNewSubPath((float)bottomLeft.getX(), firstY);
 
-                // Use cubic curves with tighter control points for spikier but smooth curves
+                // Draw smooth cubic curves with all points clamped to bounds
                 for (int i = 1; i < (int)smoothedSpectrum.size(); ++i)
                 {
                     float x = bottomLeft.getX() + (i * xScale);
                     float y = bottomLeft.getBottom() - (smoothedSpectrum[i] * amplitudeGain * bottomLeft.getHeight());
+                    y = juce::jlimit((float)bottomLeft.getY(), (float)bottomLeft.getBottom(), y);
 
-                    // Get control points for sharper, spikier curves
                     float prevX = bottomLeft.getX() + ((i - 1) * xScale);
                     float prevY = bottomLeft.getBottom() - (smoothedSpectrum[i - 1] * amplitudeGain * bottomLeft.getHeight());
+                    prevY = juce::jlimit((float)bottomLeft.getY(), (float)bottomLeft.getBottom(), prevY);
 
-                    // Tighter control points for less curvy, more angular appearance
+                    // Control points for smooth curves - also clamped
                     float ctrlX1 = prevX + (x - prevX) * 0.25f;
                     float ctrlY1 = prevY;
                     float ctrlX2 = prevX + (x - prevX) * 0.75f;
@@ -762,9 +851,12 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
                 }
 
                 // Draw ultra-thin, rounded line
-                g.setColour(bottomLeftEffect.effectColor);
-                juce::PathStrokeType strokeType(1.15f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
-                g.strokePath(linePath, strokeType);
+                if (!linePath.isEmpty())
+                {
+                    g.setColour(bottomLeftEffect.effectColor);
+                    juce::PathStrokeType strokeType(1.15f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+                    g.strokePath(linePath, strokeType);
+                }
             }
         }
 
@@ -778,6 +870,10 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
 
     // BOTTOM RIGHT: Render based on effect config
     {
+        // Clip all rendering to panel bounds
+        juce::Graphics::ScopedSaveState sectionClip(g);
+        g.reduceClipRegion(bottomRight);
+
         // Render effect based on bottomRightEffect.type
         if (bottomRightEffect.type == EffectType::Flutter)
         {
@@ -876,28 +972,67 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
                 bottomRightSpectrumSmooth[i] = smoothedSpectrum[i]; // Store for next frame
             }
 
-            // Draw smooth frequency line using cubic curves
+            // For kick transient mode, modulate spectrum by actual kick detection
+            if (bottomRightEffect.frequencyRange == FrequencyRange::KickTransient)
+            {
+                float kickValue = audioProcessor.getKickTransient(AudioVisualizerProcessor::BottomRight);
+                for (int i = 0; i < (int)smoothedSpectrum.size(); ++i)
+                {
+                    smoothedSpectrum[i] *= kickValue;  // Only show high values during detected kicks
+                }
+            }
+
+            // amplitudeGain for visual dynamics
+            float amplitudeGain = 1.5f;
+
+            // Draw smooth frequency line - only draw points within bounds
             if (!smoothedSpectrum.empty() && smoothedSpectrum.size() > 1)
             {
+                // Save graphics state and clip to panel bounds
+                juce::Graphics::ScopedSaveState saveState(g);
+                g.reduceClipRegion(bottomRight);
+
+                // Adaptive normalization - find current peak and smooth it over time
+                float currentPeak = 0.0001f;
+                for (int i = 0; i < (int)smoothedSpectrum.size(); ++i)
+                {
+                    if (smoothedSpectrum[i] > currentPeak)
+                        currentPeak = smoothedSpectrum[i];
+                }
+
+                // Smooth the peak: fast attack (0.3), slow release (0.995)
+                if (currentPeak > bottomRightSpectrumPeak)
+                    bottomRightSpectrumPeak = bottomRightSpectrumPeak * 0.3f + currentPeak * 0.7f;  // Fast attack
+                else
+                    bottomRightSpectrumPeak = bottomRightSpectrumPeak * 0.995f + currentPeak * 0.005f;  // Slow release
+
+                // Normalize by smoothed peak to keep visualization in reasonable range
+                float normalizationFactor = bottomRightSpectrumPeak * amplitudeGain;
+                for (int i = 0; i < (int)smoothedSpectrum.size(); ++i)
+                {
+                    smoothedSpectrum[i] /= normalizationFactor;
+                }
+
                 juce::Path linePath;
                 float xScale = (float)bottomRight.getWidth() / (float)(smoothedSpectrum.size() - 1);
-                float amplitudeGain = 1.5f; // Amplify the height for more dynamic movement
 
-                // Start path
+                // Calculate first Y with clamping
                 float firstY = bottomRight.getBottom() - (smoothedSpectrum[0] * amplitudeGain * bottomRight.getHeight());
+                firstY = juce::jlimit((float)bottomRight.getY(), (float)bottomRight.getBottom(), firstY);
                 linePath.startNewSubPath((float)bottomRight.getX(), firstY);
 
-                // Use cubic curves with tighter control points for spikier but smooth curves
+                // Draw smooth cubic curves with all points clamped to bounds
                 for (int i = 1; i < (int)smoothedSpectrum.size(); ++i)
                 {
                     float x = bottomRight.getX() + (i * xScale);
                     float y = bottomRight.getBottom() - (smoothedSpectrum[i] * amplitudeGain * bottomRight.getHeight());
+                    y = juce::jlimit((float)bottomRight.getY(), (float)bottomRight.getBottom(), y);
 
-                    // Get control points for sharper, spikier curves
                     float prevX = bottomRight.getX() + ((i - 1) * xScale);
                     float prevY = bottomRight.getBottom() - (smoothedSpectrum[i - 1] * amplitudeGain * bottomRight.getHeight());
+                    prevY = juce::jlimit((float)bottomRight.getY(), (float)bottomRight.getBottom(), prevY);
 
-                    // Tighter control points for less curvy, more angular appearance
+                    // Control points for smooth curves - also clamped
                     float ctrlX1 = prevX + (x - prevX) * 0.25f;
                     float ctrlY1 = prevY;
                     float ctrlX2 = prevX + (x - prevX) * 0.75f;
@@ -907,9 +1042,12 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
                 }
 
                 // Draw ultra-thin, rounded line
-                g.setColour(bottomRightEffect.effectColor);
-                juce::PathStrokeType strokeType(1.15f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
-                g.strokePath(linePath, strokeType);
+                if (!linePath.isEmpty())
+                {
+                    g.setColour(bottomRightEffect.effectColor);
+                    juce::PathStrokeType strokeType(1.15f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+                    g.strokePath(linePath, strokeType);
+                }
             }
         }
 
