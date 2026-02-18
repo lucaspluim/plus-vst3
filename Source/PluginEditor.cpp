@@ -582,109 +582,160 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
     }
 
     // -------------------------------------------------------------------------
-    // Effect picker panel
+    // Effect picker panel  (frosted-glass aesthetic, tight layout)
     // -------------------------------------------------------------------------
     if (effectPickerVisible)
     {
-        auto pickerBounds = fullBounds.removeFromRight(menuWidth);
+        auto pk = fullBounds.removeFromRight(menuWidth);
 
-        g.setColour(juce::Colour(35, 35, 40));
-        g.fillRect(pickerBounds);
-        g.setColour(juce::Colour(60, 60, 65));
-        g.fillRect(juce::Rectangle<int>(pickerBounds.getX(), pickerBounds.getY(),
-                                         1, pickerBounds.getHeight()));
+        auto bgBase  = lightMode ? juce::Colour(245, 245, 250) : juce::Colour(18, 18, 24);
+        auto sepCol  = lightMode ? juce::Colour(200, 200, 210) : juce::Colour(48, 48, 58);
+        auto textCol = lightMode ? juce::Colours::black        : juce::Colours::white;
+        auto dimCol  = lightMode ? juce::Colours::black.withAlpha(0.32f)
+                                 : juce::Colours::white.withAlpha(0.32f);
+        auto rowDiv  = lightMode ? juce::Colour(210, 210, 220) : juce::Colour(38, 38, 48);
 
-        // Title
-        auto titleArea = pickerBounds.removeFromTop(60);
-        g.setColour(juce::Colour(45, 45, 50));
-        g.fillRect(titleArea);
-        g.setColour(juce::Colours::white);
-        g.setFont(20.0f);
-        g.drawText("Effects", titleArea, juce::Justification::centred);
+        juce::ColourGradient bgGrad(
+            bgBase, (float)pk.getX(), (float)pk.getY(),
+            lightMode ? juce::Colour(235, 235, 242) : juce::Colour(12, 12, 18),
+            (float)pk.getX(), (float)pk.getBottom(), false);
+        g.setGradientFill(bgGrad);
+        g.fillRect(pk);
+        g.setColour(sepCol);
+        g.fillRect(juce::Rectangle<int>(pk.getX(), pk.getY(), 1, pk.getHeight()));
 
-        // Instructions
-        auto instrArea = pickerBounds.removeFromTop(65);
-        g.setColour(juce::Colours::white.withAlpha(0.5f));
-        g.setFont(10.0f);
-        g.drawText("Drag effects onto sections\nRight-click for options\nDouble-click to close",
-                   instrArea, juce::Justification::centred);
+        // Reserve footer: toggle (52px) + instructions (38px)
+        auto toggleArea = pk.removeFromBottom(52);
+        auto instrArea  = pk.removeFromBottom(38);
 
-        // Color picker
-        auto colorArea = pickerBounds.removeFromTop(50).reduced(20, 10);
-        g.setColour(juce::Colours::white);
-        g.setFont(11.0f);
-        auto labelArea = colorArea.removeFromLeft(50);
-        g.drawText("Color:", labelArea, juce::Justification::centredLeft);
+        pk.removeFromTop(10);
 
-        colorPickerBounds = colorArea.reduced(0, 5);
-        colorPickerBounds.setWidth(colorPickerBounds.getHeight());
+        // ---- Title ----
+        auto titleRow = pk.removeFromTop(34);
+        g.setColour(textCol);
+        g.setFont(juce::Font(15.0f, juce::Font::bold));
+        g.drawText("Effects", titleRow.reduced(18, 0), juce::Justification::centredLeft);
+
+        g.setColour(sepCol);
+        g.fillRect(pk.removeFromTop(1));
+        pk.removeFromTop(2);
+
+        // ---- Color row ----
+        auto colorRow = pk.removeFromTop(38).reduced(18, 0);
+        g.setColour(textCol);
+        g.setFont(13.0f);
+        g.drawText("Color", colorRow.removeFromLeft(46), juce::Justification::centredLeft);
+
+        colorPickerBounds = colorRow.removeFromLeft(24).reduced(0, 7);
         g.setColour(selectedColor);
-        g.fillRoundedRectangle(colorPickerBounds.toFloat(), 4.0f);
-        g.setColour(juce::Colour(70, 70, 75));
-        g.drawRoundedRectangle(colorPickerBounds.toFloat(), 4.0f, 1.5f);
+        g.fillRoundedRectangle(colorPickerBounds.toFloat(), 3.0f);
+        g.setColour(sepCol);
+        g.drawRoundedRectangle(colorPickerBounds.toFloat(), 3.0f, 1.0f);
 
-        pickerBounds.removeFromTop(10);
+        g.setColour(dimCol);
+        g.setFont(11.0f);
+        g.drawText("#" + selectedColor.toDisplayString(false),
+                   colorRow.reduced(6, 0), juce::Justification::centredLeft);
 
-        // Light/dark toggle (reserve at bottom)
-        auto toggleReserved = pickerBounds.removeFromBottom(70);
+        pk.removeFromTop(2);
+        g.setColour(sepCol);
+        g.fillRect(pk.removeFromTop(1));
 
-        // Effect boxes
-        auto effectArea = pickerBounds.reduced(15, 10);
-        int yPos = effectArea.getY();
+        // ---- Effect list (scrollable) ----
+        auto listArea = pk;
+        effectListAreaH = listArea.getHeight();
 
-        struct EffectInfo { const char* name; EffectType type; };
-        static const EffectInfo kEffects[] = {
-            { "Binary Flash",   EffectType::BinaryFlash   },
-            { "Flutter",        EffectType::Flutter        },
-            { "Starfield",      EffectType::Starfield      },
-            { "Frequency Line", EffectType::FrequencyLine  },
-            { "3D Cube",        EffectType::RotatingCube   }
+        static constexpr int kRowH = 36;
+        int totalListH  = 5 * kRowH;
+        int maxScroll   = std::max(0, totalListH - effectListAreaH);
+        effectListScrollOffset = juce::jlimit(0, maxScroll, effectListScrollOffset);
+
+        static const char* kEffectNames[] = {
+            "Binary Flash", "Flutter", "Starfield", "Frequency Line", "3D Cube"
         };
 
-        for (int i = 0; i < 5; i++)
         {
-            auto effectBox = juce::Rectangle<int>(effectArea.getX(), yPos,
-                                                   effectArea.getWidth(), 55);
-            g.setColour(juce::Colour(50, 50, 55));
-            g.fillRoundedRectangle(effectBox.toFloat(), 6.0f);
-            g.setColour(juce::Colour(70, 70, 75));
-            g.drawRoundedRectangle(effectBox.toFloat(), 6.0f, 1.0f);
-            g.setColour(juce::Colours::white);
-            g.setFont(15.0f);
-            g.drawText(kEffects[i].name, effectBox, juce::Justification::centred);
-            effectBoxBounds[i] = effectBox;
-            yPos += 60;
+            juce::Graphics::ScopedSaveState listClip(g);
+            g.reduceClipRegion(listArea);
+
+            for (int i = 0; i < 5; i++)
+            {
+                int itemY = listArea.getY() + i * kRowH - effectListScrollOffset;
+                auto row  = juce::Rectangle<int>(listArea.getX(), itemY,
+                                                  listArea.getWidth(), kRowH);
+
+                bool visible = row.getBottom() > listArea.getY()
+                            && row.getY()      < listArea.getBottom();
+                effectBoxBounds[i] = visible ? row : juce::Rectangle<int>{};
+                if (!visible) continue;
+
+                g.setColour(textCol);
+                g.setFont(13.0f);
+                g.drawText(kEffectNames[i], row.reduced(18, 0),
+                           juce::Justification::centredLeft);
+
+                // Six-dot drag handle (right side)
+                float hdx = (float)(row.getRight() - 18);
+                float hdy = (float)row.getCentreY();
+                g.setColour(dimCol);
+                for (int col = 0; col < 2; ++col)
+                    for (int r2 = -1; r2 <= 1; ++r2)
+                        g.fillEllipse(hdx + col * 5.0f - 2.5f,
+                                      hdy + r2 * 4.0f - 1.0f, 2.0f, 2.0f);
+
+                if (i < 4)
+                {
+                    g.setColour(rowDiv);
+                    g.fillRect(row.getX() + 18, row.getBottom(), row.getWidth() - 18, 1);
+                }
+            }
+
+            // Scroll indicator
+            if (maxScroll > 0)
+            {
+                float frac   = (float)effectListScrollOffset / (float)maxScroll;
+                int   thumbH = std::max(20, effectListAreaH * effectListAreaH / totalListH);
+                int   thumbY = listArea.getY()
+                             + (int)((effectListAreaH - thumbH) * frac);
+                g.setColour(dimCol.withAlpha(0.55f));
+                g.fillRoundedRectangle((float)(listArea.getRight() - 5), (float)thumbY,
+                                        3.0f, (float)thumbH, 1.5f);
+            }
         }
 
-        // Light/dark toggle
-        auto toggleArea = toggleReserved.removeFromBottom(15 + 35).removeFromTop(35).reduced(40, 0);
-        auto switchArea = toggleArea.withHeight(24).withWidth(48)
-                                    .withCentre(toggleArea.getCentre());
+        // ---- Instructions ----
+        g.setColour(sepCol);
+        g.fillRect(juce::Rectangle<int>(instrArea.getX(), instrArea.getY(),
+                                         instrArea.getWidth(), 1));
+        instrArea.removeFromTop(6);
+        g.setColour(dimCol);
+        g.setFont(10.0f);
+        g.drawText("Drag effect onto panel",
+                   instrArea.removeFromTop(14).reduced(18, 0),
+                   juce::Justification::centredLeft);
+        g.drawText("Right-click panel for options",
+                   instrArea.removeFromTop(14).reduced(18, 0),
+                   juce::Justification::centredLeft);
+
+        // ---- Light / dark toggle — single moving dot ----
+        g.setColour(sepCol);
+        g.fillRect(juce::Rectangle<int>(toggleArea.getX(), toggleArea.getY(),
+                                         toggleArea.getWidth(), 1));
+
+        auto switchArea = juce::Rectangle<int>(0, 0, 44, 22)
+                              .withCentre(toggleArea.getCentre());
         lightModeToggleBounds = switchArea;
 
-        g.setColour(juce::Colour(60, 60, 65));
-        g.fillRoundedRectangle(switchArea.toFloat(), 12.0f);
+        g.setColour(lightMode ? juce::Colour(190, 190, 205) : juce::Colour(50, 50, 62));
+        g.fillRoundedRectangle(switchArea.toFloat(), 11.0f);
 
-        // Moon
-        auto moonArea = switchArea.removeFromLeft(24).reduced(5);
-        g.setColour(lightMode ? juce::Colours::white.withAlpha(0.3f)
-                              : juce::Colours::white.withAlpha(0.7f));
-        g.fillEllipse(moonArea.toFloat());
-        g.setColour(juce::Colour(60, 60, 65));
-        g.fillEllipse(moonArea.reduced(2).translated(3, 0).toFloat());
-
-        // Sun
-        auto sunArea = switchArea.removeFromRight(24).reduced(6);
-        g.setColour(lightMode ? juce::Colours::white.withAlpha(0.9f)
-                              : juce::Colours::white.withAlpha(0.3f));
-        g.fillEllipse(sunArea.toFloat());
-        float scx = sunArea.getCentreX(), scy = sunArea.getCentreY();
-        for (int i = 0; i < 8; ++i)
-        {
-            float angle = i * juce::MathConstants<float>::pi / 4.0f;
-            g.drawLine(scx + std::cos(angle) * 7.0f, scy + std::sin(angle) * 7.0f,
-                       scx + std::cos(angle) * 10.0f, scy + std::sin(angle) * 10.0f, 1.0f);
-        }
+        // Dot slides left (dark) or right (light)
+        float dotCX = lightMode ? (float)(switchArea.getRight() - 14)
+                                 : (float)(switchArea.getX()    + 14);
+        float dotCY = (float)switchArea.getCentreY();
+        g.setColour(lightMode ? juce::Colours::black.withAlpha(0.55f)
+                              : juce::Colours::white.withAlpha(0.90f));
+        g.fillEllipse(dotCX - 7.0f, dotCY - 7.0f, 14.0f, 14.0f);
     }
 
     // -------------------------------------------------------------------------
@@ -828,11 +879,11 @@ void AudioVisualizerEditor::mouseDown(const juce::MouseEvent& event)
 
                 void textEditorTextChanged(juce::TextEditor& ed) override
                 {
-                    auto hex = ed.getText().trim();
-                    if (!hex.startsWith("#")) hex = "#" + hex;
-                    if (hex.length() >= 7)
+                    // fromString() expects "AARRGGBB" — strip # and prepend full alpha
+                    auto hex = ed.getText().trim().trimCharactersAtStart("#");
+                    if (hex.length() == 6)
                     {
-                        auto c = juce::Colour::fromString(hex);
+                        auto c = juce::Colour::fromString("ff" + hex);
                         colourSelector->setCurrentColour(c, juce::dontSendNotification);
                         editor.selectedColor = c;
                         editor.repaint();
@@ -1152,6 +1203,24 @@ void AudioVisualizerEditor::itemDropped(
     }
 
     effectHoverPanelId = -1;
+    repaint();
+}
+
+// =============================================================================
+// Mouse wheel (scroll effect list)
+// =============================================================================
+
+void AudioVisualizerEditor::mouseWheelMove(const juce::MouseEvent& event,
+                                             const juce::MouseWheelDetails& wheel)
+{
+    if (!effectPickerVisible) return;
+    if (event.getPosition().getX() < getWidth() - 220) return; // not over picker
+
+    effectListScrollOffset -= (int)(wheel.deltaY * 60.0f);
+
+    int maxScroll = std::max(0, 5 * 36 - effectListAreaH);
+    effectListScrollOffset = juce::jlimit(0, maxScroll, effectListScrollOffset);
+
     repaint();
 }
 

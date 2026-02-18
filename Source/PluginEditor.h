@@ -183,6 +183,11 @@ private:
     juce::Rectangle<int> lightModeToggleBounds;
     juce::Rectangle<int> colorPickerBounds;
 
+    int effectListScrollOffset = 0;   // px scrolled into the list
+    int effectListAreaH        = 300; // visible list height (set each paint)
+    void mouseWheelMove(const juce::MouseEvent& event,
+                        const juce::MouseWheelDetails& wheel) override;
+
     void showPanelMenu(int panelId);
     void applyEffectToPanel(int panelId, EffectType effect, juce::Colour color);
 
