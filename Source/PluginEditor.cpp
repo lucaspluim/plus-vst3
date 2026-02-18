@@ -12,28 +12,32 @@ AudioVisualizerEditor::AudioVisualizerEditor (AudioVisualizerProcessor& p)
     setWantsKeyboardFocus(true);
     setResizable(true, false);
 
-    // Default layout:
-    //   Top half     — Flutter / Highs
-    //   Bottom left  — RotatingCube / Mids
-    //   Bottom right — VSplit:
-    //       top      — Starfield / KickTransient
-    //       bottom   — FrequencyLine / FullSpectrum
-    int topId = createPanel({ EffectType::Flutter,       FrequencyRange::Highs         },
-                              AudioVisualizerProcessor::Top);
-    int blId  = createPanel({ EffectType::RotatingCube,  FrequencyRange::Mids          },
-                              AudioVisualizerProcessor::BottomLeft);
-    int brTopId = createPanel({ EffectType::Starfield,   FrequencyRange::KickTransient },
-                               AudioVisualizerProcessor::BottomRight);
-    int brBotId = createPanel({ EffectType::FrequencyLine, FrequencyRange::FullSpectrum },
-                               AudioVisualizerProcessor::Main);
+    // Try to restore the last saved state; fall back to the default layout
+    if (!loadStateFromProcessor())
+    {
+        // Default layout:
+        //   Top half     — Flutter / Highs
+        //   Bottom left  — RotatingCube / Mids
+        //   Bottom right — VSplit:
+        //       top      — Starfield / KickTransient
+        //       bottom   — FrequencyLine / FullSpectrum
+        int topId   = createPanel({ EffectType::Flutter,       FrequencyRange::Highs         },
+                                    AudioVisualizerProcessor::Top);
+        int blId    = createPanel({ EffectType::RotatingCube,  FrequencyRange::Mids          },
+                                    AudioVisualizerProcessor::BottomLeft);
+        int brTopId = createPanel({ EffectType::Starfield,     FrequencyRange::KickTransient },
+                                    AudioVisualizerProcessor::BottomRight);
+        int brBotId = createPanel({ EffectType::FrequencyLine, FrequencyRange::FullSpectrum  },
+                                    AudioVisualizerProcessor::Main);
 
-    layoutRoot = makeSplit(LayoutNode::Split::V,
-                           makeLeaf(topId),
-                           makeSplit(LayoutNode::Split::H,
-                                     makeLeaf(blId),
-                                     makeSplit(LayoutNode::Split::V,
-                                               makeLeaf(brTopId),
-                                               makeLeaf(brBotId))));
+        layoutRoot = makeSplit(LayoutNode::Split::V,
+                               makeLeaf(topId),
+                               makeSplit(LayoutNode::Split::H,
+                                         makeLeaf(blId),
+                                         makeSplit(LayoutNode::Split::V,
+                                                   makeLeaf(brTopId),
+                                                   makeLeaf(brBotId))));
+    }
 
     juce::Timer::callAfterDelay(100, [this]()
     {
@@ -45,7 +49,10 @@ AudioVisualizerEditor::AudioVisualizerEditor (AudioVisualizerProcessor& p)
     startTimerHz(60);
 }
 
-AudioVisualizerEditor::~AudioVisualizerEditor() {}
+AudioVisualizerEditor::~AudioVisualizerEditor()
+{
+    saveStateToProcessor();
+}
 
 // =============================================================================
 // Panel management
@@ -1265,6 +1272,141 @@ void AudioVisualizerEditor::toggleEffectPicker()
     setSize(effectPickerVisible ? getWidth() + menuWidth : getWidth() - menuWidth,
             getHeight());
     repaint();
+}
+
+// =============================================================================
+// State persistence
+// =============================================================================
+
+void AudioVisualizerEditor::serializeLayout(const LayoutNode* node,
+                                              juce::XmlElement* parent) const
+{
+    if (!node) return;
+
+    if (node->isLeaf)
+    {
+        auto* e = parent->createNewChildElement("Leaf");
+        e->setAttribute("panelId", node->panelId);
+    }
+    else
+    {
+        auto* e = parent->createNewChildElement("Split");
+        e->setAttribute("type", node->split == LayoutNode::Split::V ? "V" : "H");
+        e->setAttribute("ratio", (double)node->ratio);
+        auto* first  = e->createNewChildElement("First");
+        auto* second = e->createNewChildElement("Second");
+        serializeLayout(node->first.get(),  first);
+        serializeLayout(node->second.get(), second);
+    }
+}
+
+std::unique_ptr<AudioVisualizerEditor::LayoutNode>
+AudioVisualizerEditor::deserializeLayout(const juce::XmlElement* xml)
+{
+    if (!xml) return nullptr;
+
+    if (xml->getTagName() == "Leaf")
+        return makeLeaf(xml->getIntAttribute("panelId", -1));
+
+    if (xml->getTagName() == "Split")
+    {
+        auto splitType = xml->getStringAttribute("type") == "V"
+                         ? LayoutNode::Split::V : LayoutNode::Split::H;
+        float ratio = (float)xml->getDoubleAttribute("ratio", 0.5);
+
+        auto* firstEl  = xml->getChildByName("First");
+        auto* secondEl = xml->getChildByName("Second");
+
+        auto first  = firstEl  ? deserializeLayout(firstEl->getFirstChildElement())  : nullptr;
+        auto second = secondEl ? deserializeLayout(secondEl->getFirstChildElement()) : nullptr;
+
+        if (first && second)
+            return makeSplit(splitType, std::move(first), std::move(second), ratio);
+    }
+    return nullptr;
+}
+
+void AudioVisualizerEditor::saveStateToProcessor()
+{
+    auto xml = std::make_unique<juce::XmlElement>("AudioVisualizerState");
+
+    xml->setAttribute("lightMode",       lightMode);
+    xml->setAttribute("showDebugValues", showDebugValues);
+    xml->setAttribute("selectedColor",   selectedColor.toString());
+    xml->setAttribute("selectedBgColor", selectedBgColor.toString());
+    xml->setAttribute("bgColorApplyAll", bgColorApplyAll);
+
+    auto* panelsEl = xml->createNewChildElement("Panels");
+    for (auto& p : panels)
+    {
+        auto* e = panelsEl->createNewChildElement("Panel");
+        e->setAttribute("id",           p->id);
+        e->setAttribute("effectType",   (int)p->config.type);
+        e->setAttribute("freqRange",    (int)p->config.frequencyRange);
+        e->setAttribute("effectColor",  p->config.effectColor.toString());
+        e->setAttribute("procID",       (int)p->procID);
+        e->setAttribute("bgColor",      p->bgColor.toString());
+        e->setAttribute("hasBgOverride", p->hasBgOverride);
+    }
+
+    auto* layoutEl = xml->createNewChildElement("Layout");
+    serializeLayout(layoutRoot.get(), layoutEl);
+
+    juce::MemoryBlock mb;
+    juce::MemoryOutputStream stream(mb, false);
+    xml->writeTo(stream);
+    stream.flush();
+    audioProcessor.saveEditorState(mb);
+}
+
+bool AudioVisualizerEditor::loadStateFromProcessor()
+{
+    const auto& mb = audioProcessor.getEditorState();
+    if (mb.getSize() == 0) return false;
+
+    auto xml = juce::XmlDocument::parse(
+        juce::String::fromUTF8((const char*)mb.getData(), (int)mb.getSize()));
+    if (!xml || xml->getTagName() != "AudioVisualizerState") return false;
+
+    lightMode       = xml->getBoolAttribute("lightMode",       false);
+    showDebugValues = xml->getBoolAttribute("showDebugValues", true);
+    selectedColor   = juce::Colour::fromString(xml->getStringAttribute("selectedColor",   "ffffffff"));
+    selectedBgColor = juce::Colour::fromString(xml->getStringAttribute("selectedBgColor", "ff000000"));
+    bgColorApplyAll = xml->getBoolAttribute("bgColorApplyAll", false);
+
+    // Restore panels
+    panels.clear();
+    nextPanelId = 0;
+    auto* panelsEl = xml->getChildByName("Panels");
+    if (!panelsEl) return false;
+
+    for (auto* e : panelsEl->getChildIterator())
+    {
+        auto panel = std::make_unique<Panel>();
+        panel->id                    = e->getIntAttribute("id", nextPanelId);
+        panel->config.type           = (EffectType)e->getIntAttribute("effectType", (int)EffectType::Flutter);
+        panel->config.frequencyRange = (FrequencyRange)e->getIntAttribute("freqRange", (int)FrequencyRange::Mids);
+        panel->config.effectColor    = juce::Colour::fromString(e->getStringAttribute("effectColor", "ffffffff"));
+        panel->procID                = (AudioVisualizerProcessor::PanelID)e->getIntAttribute("procID", (int)AudioVisualizerProcessor::Main);
+        panel->bgColor               = juce::Colour::fromString(e->getStringAttribute("bgColor", "ff000000"));
+        panel->hasBgOverride         = e->getBoolAttribute("hasBgOverride", false);
+        nextPanelId = std::max(nextPanelId, panel->id + 1);
+        panels.push_back(std::move(panel));
+    }
+
+    // Restore layout tree
+    auto* layoutEl = xml->getChildByName("Layout");
+    if (layoutEl && layoutEl->getFirstChildElement())
+    {
+        layoutRoot = deserializeLayout(layoutEl->getFirstChildElement());
+        if (!layoutRoot) return false;
+    }
+    else
+    {
+        return false;
+    }
+
+    return true;
 }
 
 void AudioVisualizerEditor::showPanelMenu(int panelId)

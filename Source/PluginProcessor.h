@@ -33,6 +33,10 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    // Editor state persistence (written by editor on close, read on open)
+    void saveEditorState (const juce::MemoryBlock& state) { savedEditorState = state; }
+    const juce::MemoryBlock& getEditorState() const       { return savedEditorState; }
+
     // Audio file handling
     void loadAudioFile(const juce::File& file);
     bool isAudioLoaded() const { return audioLoaded; }
@@ -165,6 +169,8 @@ private:
     int bottomLeftFftDataPos = 0;
     std::array<float, fftSize * 2> bottomRightFftData;
     int bottomRightFftDataPos = 0;
+
+    juce::MemoryBlock savedEditorState;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioVisualizerProcessor)
 };

@@ -209,5 +209,12 @@ private:
     void showPanelMenu(int panelId);
     void applyEffectToPanel(int panelId, EffectType effect, juce::Colour color);
 
+    // State persistence
+    void saveStateToProcessor();
+    bool loadStateFromProcessor();   // returns false if no saved state
+
+    void serializeLayout   (const LayoutNode* node, juce::XmlElement* parent) const;
+    std::unique_ptr<LayoutNode> deserializeLayout (const juce::XmlElement* xml);
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioVisualizerEditor)
 };

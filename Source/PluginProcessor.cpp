@@ -428,12 +428,13 @@ juce::AudioProcessorEditor* AudioVisualizerProcessor::createEditor()
 
 void AudioVisualizerProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    juce::ignoreUnused (destData);
+    destData = savedEditorState;
 }
 
 void AudioVisualizerProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    juce::ignoreUnused (data, sizeInBytes);
+    savedEditorState.setSize (0);
+    savedEditorState.append (data, (size_t)sizeInBytes);
 }
 
 void AudioVisualizerProcessor::loadAudioFile(const juce::File& file)
