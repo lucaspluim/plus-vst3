@@ -44,7 +44,7 @@ void AudioVisualizerEditor::mouseDrag(const juce::MouseEvent& event)
     auto pos = event.getPosition();
 
     // Check if dragging from effect box area
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 5; i++)
     {
         if (effectBoxBounds[i].contains(pos))
         {
@@ -56,6 +56,7 @@ void AudioVisualizerEditor::mouseDrag(const juce::MouseEvent& event)
                 case 1: effectType = EffectType::Flutter; break;
                 case 2: effectType = EffectType::Starfield; break;
                 case 3: effectType = EffectType::FrequencyLine; break;
+                case 4: effectType = EffectType::RotatingCube; break;
                 default: return;
             }
 
@@ -78,7 +79,7 @@ void AudioVisualizerEditor::mouseDrag(const juce::MouseEvent& event)
             // Effect name
             dragG.setColour(juce::Colours::white);
             dragG.setFont(14.0f);
-            const char* names[] = { "Binary Flash", "Flutter", "Starfield", "Frequency Line" };
+            const char* names[] = { "Binary Flash", "Flutter", "Starfield", "Frequency Line", "3D Cube" };
             juce::Rectangle<int> textArea(30, 0, 70, 40);
             dragG.drawText(names[i], textArea, juce::Justification::centredLeft);
 
@@ -528,6 +529,14 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
             topStarfield.update(topRawValue, isBinaryMode);
             topStarfield.draw(g, topHalf, centerX, centerY, lightMode, topEffect.effectColor);
         }
+        else if (topEffect.type == EffectType::RotatingCube)
+        {
+            g.setColour(lightMode ? juce::Colours::white : juce::Colours::black);
+            g.fillRect(topHalf);
+
+            topCube.update(topRawValue);
+            topCube.draw(g, topHalf, lightMode, topEffect.effectColor);
+        }
         else if (topEffect.type == EffectType::FrequencyLine)
         {
             // Background color based on mode
@@ -719,6 +728,14 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
             bottomLeftStarfield.update(bottomLeftRawValue, isBinaryMode);
             bottomLeftStarfield.draw(g, bottomLeft, centerX, centerY, lightMode, bottomLeftEffect.effectColor);
         }
+        else if (bottomLeftEffect.type == EffectType::RotatingCube)
+        {
+            g.setColour(lightMode ? juce::Colours::white : juce::Colours::black);
+            g.fillRect(bottomLeft);
+
+            bottomLeftCube.update(bottomLeftRawValue);
+            bottomLeftCube.draw(g, bottomLeft, lightMode, bottomLeftEffect.effectColor);
+        }
         else if (bottomLeftEffect.type == EffectType::FrequencyLine)
         {
             // Background color based on mode
@@ -909,6 +926,14 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
 
             bottomRightStarfield.update(bottomRightRawValue, isBinaryMode);
             bottomRightStarfield.draw(g, bottomRight, centerX, centerY, lightMode, bottomRightEffect.effectColor);
+        }
+        else if (bottomRightEffect.type == EffectType::RotatingCube)
+        {
+            g.setColour(lightMode ? juce::Colours::white : juce::Colours::black);
+            g.fillRect(bottomRight);
+
+            bottomRightCube.update(bottomRightRawValue);
+            bottomRightCube.draw(g, bottomRight, lightMode, bottomRightEffect.effectColor);
         }
         else if (bottomRightEffect.type == EffectType::FrequencyLine)
         {
@@ -1114,8 +1139,11 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
 
         pickerBounds.removeFromTop(10);  // Spacing
 
-        // Draw available effects (draggable)
-        auto effectArea = pickerBounds.reduced(15, 20);
+        // Reserve space for light mode toggle at bottom
+        auto toggleReserved = pickerBounds.removeFromBottom(70);
+
+        // Draw available effects (draggable) in remaining space
+        auto effectArea = pickerBounds.reduced(15, 10);
         int yPos = effectArea.getY();
 
         struct EffectInfo { const char* name; EffectType type; };
@@ -1123,12 +1151,13 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
             { "Binary Flash", EffectType::BinaryFlash },
             { "Flutter", EffectType::Flutter },
             { "Starfield", EffectType::Starfield },
-            { "Frequency Line", EffectType::FrequencyLine }
+            { "Frequency Line", EffectType::FrequencyLine },
+            { "3D Cube", EffectType::RotatingCube }
         };
 
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 5; i++)
         {
-            auto effectBox = juce::Rectangle<int>(effectArea.getX(), yPos, effectArea.getWidth(), 65);
+            auto effectBox = juce::Rectangle<int>(effectArea.getX(), yPos, effectArea.getWidth(), 55);
 
             // Effect box background with hover effect
             g.setColour(juce::Colour(50, 50, 55));
@@ -1146,13 +1175,13 @@ void AudioVisualizerEditor::paint (juce::Graphics& g)
             // Store effect box bounds for drag detection
             effectBoxBounds[i] = effectBox;
 
-            yPos += 80;
+            yPos += 60;  // Reduced spacing to fit 5 effects
         }
 
-        // Light/Dark mode toggle at bottom
-        auto toggleArea = menuFullBounds;
-        toggleArea.removeFromBottom(25);  // Padding from bottom
-        toggleArea = toggleArea.removeFromBottom(35);
+        // Light/Dark mode toggle at bottom (using reserved space)
+        auto toggleArea = toggleReserved;
+        toggleArea.removeFromBottom(15);  // Padding from bottom
+        toggleArea = toggleArea.removeFromTop(35);
         toggleArea = toggleArea.reduced(40, 0);
 
         // Toggle switch (simple with icons)

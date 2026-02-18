@@ -9,6 +9,7 @@ enum class EffectType
     Flutter,        // Gradual grayscale flickering (current mids/highs)
     Starfield,      // 3D starfield with lightspeed (current kick effect)
     FrequencyLine,  // Frequency response line for selected frequency range
+    RotatingCube,   // 3D rotating cube mesh, audio-reactive
     // Future effects can be added here:
     // Particles,
     // Waveform,

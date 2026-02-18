@@ -35,6 +35,7 @@ target_sources(AudioVisualizer
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
         Source/StarfieldInstanceImpl.cpp
+        Source/RotatingCubeInstanceImpl.cpp
         Source/EffectSystem.h
         Source/EffectBox.h
 )

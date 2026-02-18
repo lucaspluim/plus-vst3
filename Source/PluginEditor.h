@@ -82,6 +82,24 @@ private:
     StarfieldInstance bottomLeftStarfield;
     StarfieldInstance bottomRightStarfield;
 
+    // Rotating cube effect - each section has independent state
+    struct RotatingCubeInstance {
+        float rotX = 0.0f;
+        float rotY = 0.0f;
+        float rotZ = 0.0f;
+        float speedX = 0.4f;
+        float speedY = 0.7f;
+        float speedZ = 0.2f;
+        float scale  = 1.0f;
+
+        void update(float value);
+        void draw(juce::Graphics& g, const juce::Rectangle<int>& bounds, bool lightMode, juce::Colour cubeColor);
+    };
+
+    RotatingCubeInstance topCube;
+    RotatingCubeInstance bottomLeftCube;
+    RotatingCubeInstance bottomRightCube;
+
     // Effect system
     EffectConfig topEffect { EffectType::FrequencyLine, FrequencyRange::Mids };
     EffectConfig bottomLeftEffect { EffectType::Starfield, FrequencyRange::KickTransient };
@@ -120,7 +138,7 @@ private:
     juce::Rectangle<int> bottomRightSectionBounds;
 
     // Effect box bounds for drag detection
-    juce::Rectangle<int> effectBoxBounds[4];
+    juce::Rectangle<int> effectBoxBounds[5];
     juce::Rectangle<int> lightModeToggleBounds;
     juce::Rectangle<int> colorPickerBounds;
     void mouseDrag(const juce::MouseEvent& event) override;
