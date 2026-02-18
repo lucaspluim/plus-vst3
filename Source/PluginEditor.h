@@ -29,7 +29,6 @@ public:
     void timerCallback() override;
 
     // Mouse handling
-    void mouseDoubleClick(const juce::MouseEvent& event) override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseUp(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
@@ -151,8 +150,13 @@ private:
     juce::int64      pdStartMs  = 0;
     juce::Point<int> pdCurPos;
 
-    static constexpr int kDragDelayMs = 300;
-    static constexpr int kDragMinPx   = 4;
+    static constexpr int kDragDelayMs       = 300;
+    static constexpr int kDragMinPx         = 4;
+    static constexpr int kClickGroupWindowMs = 400;  // group rapid clicks into one action
+
+    // Click-group tracking for picker toggle
+    int         panelClickCount   = 0;
+    juce::int64 panelClickGroupMs = 0;
 
     struct DropZone {
         enum class Act { Top, Bottom, Left, Right, Swap };

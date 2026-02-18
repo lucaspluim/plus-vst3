@@ -884,12 +884,6 @@ void AudioVisualizerEditor::resized()
 // Mouse events
 // =============================================================================
 
-void AudioVisualizerEditor::mouseDoubleClick(const juce::MouseEvent& event)
-{
-    juce::ignoreUnused(event);
-    toggleEffectPicker();
-}
-
 void AudioVisualizerEditor::mouseDown(const juce::MouseEvent& event)
 {
     auto pos = event.getPosition();
@@ -1007,12 +1001,16 @@ void AudioVisualizerEditor::mouseDown(const juce::MouseEvent& event)
         return;
     }
 
-    // --- Left-click in visualizer: start potential panel drag ---
+    // --- Left-click in visualizer: click-group tracking + potential panel drag ---
     auto vizBounds = getLocalBounds();
     if (effectPickerVisible) vizBounds.removeFromRight(220);
 
     if (vizBounds.contains(pos))
     {
+        // Count this click for grouped double-click detection
+        panelClickCount++;
+        panelClickGroupMs = juce::Time::currentTimeMillis();
+
         int id = panelAtPos(pos);
         if (id >= 0)
         {
@@ -1233,6 +1231,21 @@ void AudioVisualizerEditor::timerCallback()
         {
             bgDragActive = true;
             repaint();
+        }
+    }
+
+    // Click-group flush: once no new click arrives for kClickGroupWindowMs,
+    // process the accumulated count — every pair of clicks = one toggle.
+    if (panelClickGroupMs > 0)
+    {
+        auto now = juce::Time::currentTimeMillis();
+        if ((now - panelClickGroupMs) >= kClickGroupWindowMs)
+        {
+            int numToggles = panelClickCount / 2;
+            for (int i = 0; i < numToggles; ++i)
+                toggleEffectPicker();
+            panelClickCount   = 0;
+            panelClickGroupMs = 0;
         }
     }
 
